@@ -27,7 +27,7 @@ def get_current_grade(start_year=2024):
 st.set_page_config(page_title="毎日英語とお笑い", page_icon="📝")
 
 # 【修正点1】タイトルのサイズを小さく調整 (h3サイズ相当)
-st.markdown("### 🔤 1日5分！七愛頑張れ")
+st.markdown("### 🔤 1日5分！七愛、毎日頑張れ")
 
 if "count" not in st.session_state:
     st.session_state.count = 0
