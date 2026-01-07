@@ -51,14 +51,12 @@ st.markdown("<h4 style='text-align: left;'>🔤 1日5分！英語マスターへ
 if "phase" not in st.session_state:
     st.session_state.phase = "new"
     st.session_state.current_word_idx = 0
-    st.session_state.typing_count = 0
 
 current_grade = get_current_grade()
 practice_words, review_word, target_neta = get_daily_items(current_grade)
 
-# --- ステップ1: 単語練習 (3回入力) ---
+# --- ステップ1: 単語練習 (3つの入力欄) ---
 if st.session_state.phase == "new":
-    # インデックスが範囲を超えないようガード
     idx = st.session_state.current_word_idx
     if idx >= len(practice_words):
         st.session_state.phase = "review"
@@ -67,46 +65,40 @@ if st.session_state.phase == "new":
     word = practice_words[idx]
     st.subheader(f"ステップ1: 中{current_grade}の練習 ({idx + 1}/3)")
     st.write(f"「{word['meaning']}」は英語で？ → **{word['word']}**")
-    
-    # 進行状況を視覚的に表示
-    count = st.session_state.typing_count
-    st.info(f"進捗: {'★' * count}{'☆' * (3-count)} （{count}/3回成功）")
-    
-    # 入力欄のキーを完全にユニークにする
-    input_key = f"input_{idx}_{count}_{datetime.datetime.now().microsecond}"
-    user_input = st.text_input("英字で入力してください", key=input_key, autocomplete="off")
-    
-    if user_input:
-        if user_input.lower().strip() == str(word['word']).lower():
-            st.session_state.typing_count += 1
-            if st.session_state.typing_count >= 3:
-                st.session_state.typing_count = 0
-                st.session_state.current_word_idx += 1
-                st.success("完璧です！次の単語へ進みます。")
-            else:
-                st.success(f"正解！あと {3 - st.session_state.typing_count} 回入力しましょう。")
-            
-            # 画面を強制更新して次の回数へ
+    st.info("下の3つの空欄すべてに正しく入力してね！")
+
+    # 物理的に3つの入力欄を作成
+    ans1 = st.text_input("1回目", key=f"ans1_{idx}", autocomplete="off").lower().strip()
+    ans2 = st.text_input("2回目", key=f"ans2_{idx}", autocomplete="off").lower().strip()
+    ans3 = st.text_input("3回目", key=f"ans3_{idx}", autocomplete="off").lower().strip()
+
+    correct_answer = str(word['word']).lower()
+
+    # 3つすべてに入力があり、かつすべて正解の場合のみボタンを出す
+    if ans1 == correct_answer and ans2 == correct_answer and ans3 == correct_answer:
+        st.success("完璧です！3回書けましたね。")
+        if st.button("次の単語へ進む"):
+            st.session_state.current_word_idx += 1
             st.rerun()
-        else:
-            # 間違えた場合はメッセージを出すが、カウントは増やさない
-            if user_input.strip() != "":
-                st.error("つづりが違います。もう一度確認して入力してね！")
+    elif ans1 or ans2 or ans3:
+        # 入力があるが、どれかが間違っている場合
+        if (ans1 and ans1 != correct_answer) or (ans2 and ans2 != correct_answer) or (ans3 and ans3 != correct_answer):
+            st.error("つづりが違うところがあるよ。よく見て直してね。")
 
 # --- ステップ2: 復習テスト ---
 elif st.session_state.phase == "review":
     st.subheader(f"ステップ2: 総復習テスト (中1〜中{current_grade}から)")
     st.write(f"「{review_word['meaning']}」を英語で書けますか？")
+    st.write("(ヒント：答えは見えません。覚えているかな？)")
     
-    user_input = st.text_input("答えを入力", key="final_test_input", autocomplete="off")
+    final_ans = st.text_input("答えを入力", key="final_test", autocomplete="off").lower().strip()
     
-    if user_input:
-        if user_input.lower().strip() == str(review_word['word']).lower():
-            st.balloons()
+    if final_ans == str(review_word['word']).lower():
+        st.balloons()
+        st.success("正解！すごい！")
+        if st.button("結果を見る"):
             st.session_state.phase = "goal"
             st.rerun()
-        elif user_input.strip() != "":
-            st.error("おっと、つづりが違うみたい。ヒント：ステップ1でやった単語かも？")
 
 # --- ゴール ---
 elif st.session_state.phase == "goal":
@@ -117,5 +109,4 @@ elif st.session_state.phase == "goal":
     if st.button("明日も頑張る"):
         st.session_state.phase = "new"
         st.session_state.current_word_idx = 0
-        st.session_state.typing_count = 0
         st.rerun()
