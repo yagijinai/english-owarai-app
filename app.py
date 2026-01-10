@@ -28,11 +28,7 @@ def get_current_grade():
 def initialize_daily_data():
     today = datetime.date.today()
     today_str = str(today)
-    
-    # 学習済みリストの取得
     learned_ids = st.query_params.get_all("learned_ids")
-    
-    # 連続日数の取得
     streak_count = int(st.query_params.get("streak", 0))
     
     if "today_date" not in st.session_state or st.session_state.today_date != today_str:
@@ -70,6 +66,7 @@ if "phase" not in st.session_state:
     st.session_state.current_word_idx = 0
     st.session_state.review_idx = 0
     st.session_state.wrong_word_id = None
+    st.session_state.show_hint = False # ヒント表示フラグ
 
 # --- ステップ1: 単語練習 ---
 if st.session_state.phase == "new":
@@ -83,10 +80,16 @@ if st.session_state.phase == "new":
     word = practice_words[idx]
     st.subheader(f"ステップ1: 新しい単語 ({idx + 1}/3)")
     
-    # 日本語（意味）を大きく赤文字にして強調
+    # 日本語を表示
     st.markdown(f"「<span style='font-size: 26px; font-weight: bold; color: #FF4B4B;'>{word['meaning']}</span>」を 3回 入力しよう！", unsafe_allow_html=True)
-    # 英単語は通常の黒文字（太字）に変更
-    st.markdown(f"つづり： <span style='font-size: 20px; font-weight: bold; color: black;'>{word['word']}</span>", unsafe_allow_html=True)
+    
+    # ヒントボタンまたは英単語の表示
+    if not st.session_state.show_hint:
+        if st.button("つづりを見る（ヒント）"):
+            st.session_state.show_hint = True
+            st.rerun()
+    else:
+        st.markdown(f"つづり： <span style='font-size: 20px; font-weight: bold; color: black;'>{word['word']}</span>", unsafe_allow_html=True)
 
     ans1 = st.text_input("1回目", key=f"ans1_{idx}").lower().strip()
     ans2 = st.text_input("2回目", key=f"ans2_{idx}").lower().strip()
@@ -99,6 +102,7 @@ if st.session_state.phase == "new":
                 current_learned.append(word['id'])
                 st.query_params["learned_ids"] = current_learned
             st.session_state.current_word_idx += 1
+            st.session_state.show_hint = False # 次の単語ではまた隠す
             st.rerun()
 
 # --- ステップ2: 徹底復習テスト ---
@@ -107,7 +111,6 @@ elif st.session_state.phase == "review":
     queue = st.session_state.review_queue
     
     if r_idx >= len(queue):
-        # ゴールへ行く前に連続日数を更新
         today = datetime.date.today()
         last_clear = st.query_params.get("last_clear", "")
         current_streak = int(st.query_params.get("streak", 0))
@@ -125,13 +128,10 @@ elif st.session_state.phase == "review":
 
     word = queue[r_idx]
     st.subheader(f"ステップ2: 復習テスト ({r_idx + 1}/{len(queue)})")
-    
-    # 復習テストでも日本語を大きく赤文字に強調
     st.markdown(f"「<span style='font-size: 26px; font-weight: bold; color: #FF4B4B;'>{word['meaning']}</span>」を英語で書こう！", unsafe_allow_html=True)
     
     if st.session_state.wrong_word_id == word['id']:
         st.warning("⚠️ つづりを間違えました！5回入力して特訓しよう。")
-        # 正解の提示も黒文字で表示
         st.write(f"正解は... **{word['word']}**")
         t_ans = [st.text_input(f"特訓 {i+1}/5", key=f"t{i}_{r_idx}").lower().strip() for i in range(5)]
         if all(a == str(word['word']).lower() and a != "" for a in t_ans):
