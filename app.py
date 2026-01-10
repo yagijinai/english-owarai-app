@@ -24,15 +24,21 @@ def get_current_grade():
     elif (today.year == 2026 and today.month >= 4) or (today.year == 2027 and today.month <= 3): return 2
     else: return 3
 
-# --- 問題選定（重複排除と復習3問） ---
+# --- 問題選定と連続日数の計算 ---
 def initialize_daily_data():
-    today = str(datetime.date.today())
-    # ブラウザから学習済みリストを取得（クリア数表示用）
+    today = datetime.date.today()
+    today_str = str(today)
+    
+    # 学習済みリストの取得
     learned_ids = st.query_params.get_all("learned_ids")
     
-    if "today_date" not in st.session_state or st.session_state.today_date != today:
-        st.session_state.today_date = today
-        random.seed(int(today.replace("-", "")))
+    # 連続日数の計算用
+    last_clear_date = st.query_params.get("last_clear", None)
+    streak_count = int(st.query_params.get("streak", 0))
+    
+    if "today_date" not in st.session_state or st.session_state.today_date != today_str:
+        st.session_state.today_date = today_str
+        random.seed(int(today_str.replace("-", "")))
         
         current_grade = get_current_grade()
         grade_pool = WORDS_DF[WORDS_DF['grade'] == current_grade]
@@ -40,24 +46,25 @@ def initialize_daily_data():
         
         if len(unlearned_pool) < 3: unlearned_pool = grade_pool
 
-        # 練習用3語
         st.session_state.daily_practice_words = unlearned_pool.sample(n=3).to_dict('records')
-        
-        # 復習用3語
         review_pool = WORDS_DF[WORDS_DF['grade'] <= current_grade]
         st.session_state.review_queue = review_pool.sample(n=3).to_dict('records')
-        
-        # 豆知識
         st.session_state.daily_neta = NETA_DF.sample(n=1).iloc[0]
     
-    return len(learned_ids)
+    return len(learned_ids), streak_count
 
-total_cleared = initialize_daily_data()
+total_cleared, streak_count = initialize_daily_data()
 
 # アプリ設定
 st.set_page_config(page_title="毎日英語とお笑い", page_icon="📝")
 st.markdown("<h4 style='text-align: left;'>🔤 徹底復習モード！英語マスター</h4>", unsafe_allow_html=True)
-st.markdown(f"<p style='text-align: right; color: gray; font-size: 12px;'>これまでクリアした単語数： {total_cleared} 個</p>", unsafe_allow_html=True)
+
+# 記録（クリア数と連続日数）を右上に表示
+st.markdown(f"""
+    <p style='text-align: right; color: gray; font-size: 12px; margin-bottom: 0;'>
+        これまでクリア： {total_cleared} 個 | 🔥 連続 {streak_count} 日
+    </p>
+    """, unsafe_allow_html=True)
 
 if "phase" not in st.session_state:
     st.session_state.phase = "new"
@@ -79,16 +86,12 @@ if st.session_state.phase == "new":
     st.write(f"「**{word['meaning']}**」を 3回 入力しよう！")
     st.markdown(f"つづり： <span style='font-size: 24px; font-weight: bold; color: #FF4B4B;'>{word['word']}</span>", unsafe_allow_html=True)
 
-    # 3つ並べて表示
     ans1 = st.text_input("1回目", key=f"ans1_{idx}").lower().strip()
     ans2 = st.text_input("2回目", key=f"ans2_{idx}").lower().strip()
     ans3 = st.text_input("3回目", key=f"ans3_{idx}").lower().strip()
 
-    correct_answer = str(word['word']).lower()
-
-    if ans1 == ans2 == ans3 == correct_answer and ans1 != "":
+    if ans1 == ans2 == ans3 == str(word['word']).lower() and ans1 != "":
         if st.button("次の単語へ"):
-            # 学習済みに追加
             current_learned = st.query_params.get_all("learned_ids")
             if word['id'] not in current_learned:
                 current_learned.append(word['id'])
@@ -102,6 +105,19 @@ elif st.session_state.phase == "review":
     queue = st.session_state.review_queue
     
     if r_idx >= len(queue):
+        # ゴールへ行く前に連続日数を更新
+        today = datetime.date.today()
+        last_clear = st.query_params.get("last_clear", "")
+        current_streak = int(st.query_params.get("streak", 0))
+        
+        if last_clear != str(today):
+            if last_clear == str(today - datetime.timedelta(days=1)):
+                new_streak = current_streak + 1
+            else:
+                new_streak = 1
+            st.query_params["streak"] = new_streak
+            st.query_params["last_clear"] = str(today)
+            
         st.session_state.phase = "goal"
         st.rerun()
 
@@ -109,21 +125,16 @@ elif st.session_state.phase == "review":
     st.subheader(f"ステップ2: 復習テスト ({r_idx + 1}/{len(queue)})")
     st.write(f"「**{word['meaning']}**」を英語で書こう！")
     
-    # 特訓モード
     if st.session_state.wrong_word_id == word['id']:
         st.warning("⚠️ つづりを間違えました！5回入力して特訓しよう。")
         st.write(f"正解は... **{word['word']}**")
-        
-        # 特訓用の5つの入力欄
         t_ans = [st.text_input(f"特訓 {i+1}/5", key=f"t{i}_{r_idx}").lower().strip() for i in range(5)]
-        
         if all(a == str(word['word']).lower() and a != "" for a in t_ans):
             if st.button("特訓完了！あとでもう一回出るよ"):
                 st.session_state.wrong_word_id = None
                 st.session_state.review_idx += 1
                 st.rerun()
     else:
-        # 通常テスト
         user_ans = st.text_input("答えを入力", key=f"rev_{r_idx}").lower().strip()
         if user_ans != "":
             if user_ans == str(word['word']).lower():
@@ -132,12 +143,9 @@ elif st.session_state.phase == "review":
                     st.session_state.review_idx += 1
                     st.rerun()
             else:
-                # 画面を揺らす演出
-                st.markdown("""<style>@keyframes shake {0%{transform:translate(1px,1px)rotate(0deg);}10%{transform:translate(-1px,-2px)rotate(-1deg);}20%{transform:translate(-3px,0px)rotate(1deg);}30%{transform:translate(3px,2px)rotate(0deg);}}
+                st.markdown("""<style>@keyframes shake {0%{transform:translate(1px,1px)rotate(0deg);}10%{transform:translate(-1px,-2px)rotate(-1deg);}20%{transform:translate(-3px,0px)rotate(1deg);}}
                 .stApp { animation: shake 0.5s; background-color: #ffe6e6; }</style>""", unsafe_allow_html=True)
-                
                 st.error("つづりが違います！特訓を開始します。")
-                # 間違えた単語を特訓モードにセットし、キューの最後にも追加する
                 st.session_state.wrong_word_id = word['id']
                 st.session_state.review_queue.append(word)
                 if st.button("特訓を始める"):
@@ -147,7 +155,8 @@ elif st.session_state.phase == "review":
 elif st.session_state.phase == "goal":
     target_neta = st.session_state.daily_neta
     st.header("🎉 全ミッション完了！")
-    st.info("今日はよく頑張りましたね。復習もバッチリです！")
+    st.balloons()
+    st.info(f"今日はよく頑張りましたね！🔥 現在 {st.query_params.get('streak', 1)} 日連続です！")
     st.subheader("今日の芸人豆知識")
     st.success(f"【{target_neta['comedian']}】\n\n{target_neta['fact']}")
     
