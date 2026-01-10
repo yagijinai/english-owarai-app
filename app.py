@@ -82,8 +82,11 @@ if st.session_state.phase == "new":
 
     word = practice_words[idx]
     st.subheader(f"ステップ1: 新しい単語 ({idx + 1}/3)")
-    st.write(f"「**{word['meaning']}**」を 3回 入力しよう！")
-    st.markdown(f"つづり： <span style='font-size: 24px; font-weight: bold; color: #FF4B4B;'>{word['word']}</span>", unsafe_allow_html=True)
+    
+    # 日本語（意味）を大きく赤文字にして強調
+    st.markdown(f"「<span style='font-size: 26px; font-weight: bold; color: #FF4B4B;'>{word['meaning']}</span>」を 3回 入力しよう！", unsafe_allow_html=True)
+    # 英単語は通常の黒文字（太字）に変更
+    st.markdown(f"つづり： <span style='font-size: 20px; font-weight: bold; color: black;'>{word['word']}</span>", unsafe_allow_html=True)
 
     ans1 = st.text_input("1回目", key=f"ans1_{idx}").lower().strip()
     ans2 = st.text_input("2回目", key=f"ans2_{idx}").lower().strip()
@@ -122,10 +125,13 @@ elif st.session_state.phase == "review":
 
     word = queue[r_idx]
     st.subheader(f"ステップ2: 復習テスト ({r_idx + 1}/{len(queue)})")
-    st.write(f"「**{word['meaning']}**」を英語で書こう！")
+    
+    # 復習テストでも日本語を大きく赤文字に強調
+    st.markdown(f"「<span style='font-size: 26px; font-weight: bold; color: #FF4B4B;'>{word['meaning']}</span>」を英語で書こう！", unsafe_allow_html=True)
     
     if st.session_state.wrong_word_id == word['id']:
         st.warning("⚠️ つづりを間違えました！5回入力して特訓しよう。")
+        # 正解の提示も黒文字で表示
         st.write(f"正解は... **{word['word']}**")
         t_ans = [st.text_input(f"特訓 {i+1}/5", key=f"t{i}_{r_idx}").lower().strip() for i in range(5)]
         if all(a == str(word['word']).lower() and a != "" for a in t_ans):
