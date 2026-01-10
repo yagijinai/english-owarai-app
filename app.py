@@ -159,6 +159,27 @@ elif st.session_state.phase == "review":
                     st.session_state.review_idx += 1
                     st.rerun()
             else:
-                # 画面を揺らす演出
+                # 画面を揺らす演出（トリプルクォートを正確に閉じる）
                 st.markdown("""<style>@keyframes shake {0%{transform:translate(1px,1px)rotate(0deg);}10%{transform:translate(-1px,-2px)rotate(-1deg);}20%{transform:translate(-3px,0px)rotate(1deg);}}
-                .stApp { animation: shake 0.5s; background-color: #
+                .stApp { animation: shake 0.5s; background-color: #ffe6e6; }</style>""", unsafe_allow_html=True)
+                st.error("つづりが違います！特訓を開始します。")
+                st.session_state.wrong_word_id = word['id']
+                st.session_state.review_queue.append(word)
+                if st.button("特訓を始める"):
+                    st.rerun()
+
+# --- ゴール ---
+elif st.session_state.phase == "goal":
+    target_neta = st.session_state.daily_neta
+    st.header("🎉 全ミッション完了！")
+    st.balloons()
+    st.info(f"今日はよく頑張りましたね！🔥 現在 {st.query_params.get('streak', 1)} 日連続です！")
+    st.subheader("今日の芸人豆知識")
+    st.success(f"【{target_neta['comedian']}】\n\n{target_neta['fact']}")
+    
+    if st.button("明日も頑張る"):
+        st.session_state.phase = "new"
+        st.session_state.current_word_idx = 0
+        st.session_state.review_idx = 0
+        st.session_state.show_hint = False
+        st.rerun()
