@@ -34,7 +34,7 @@ def initialize_daily_data():
     learned_ids = st.query_params.get_all("learned_ids")
     streak_count = int(st.query_params.get("streak", 0))
     
-    # 日付が変わった場合、またはデータが未設定の場合に初期化
+    # 日付が変わった場合、またはセッションが空の場合に初期化
     if "today_date" not in st.session_state or st.session_state.today_date != today_str:
         st.session_state.today_date = today_str
         random.seed(int(today_str.replace("-", "")))
@@ -43,7 +43,7 @@ def initialize_daily_data():
         grade_pool = WORDS_DF[WORDS_DF['grade'] == current_grade]
         unlearned_pool = grade_pool[~grade_pool['id'].isin(learned_ids)]
         
-        # もし全単語クリアしていたらリセット
+        # もし全単語クリアしていたら全プールから選択
         if len(unlearned_pool) < 3: unlearned_pool = grade_pool
 
         # 今日の練習単語(3個)
@@ -56,7 +56,7 @@ def initialize_daily_data():
     
     return len(learned_ids), streak_count
 
-# 状態の初期化
+# セッション状態の安全な初期化
 if "phase" not in st.session_state:
     st.session_state.phase = "new"
     st.session_state.current_word_idx = 0
@@ -76,23 +76,4 @@ st.markdown(f"<p style='text-align: right; color: gray; font-size: 12px; margin-
 
 # --- ステップ1: 単語練習 ---
 if st.session_state.phase == "new":
-    idx = st.session_state.current_word_idx
-    practice_words = st.session_state.daily_practice_words
-    
-    if idx >= len(practice_words):
-        st.session_state.phase = "review"
-        st.rerun()
-
-    word = practice_words[idx]
-    st.subheader(f"ステップ1: 新しい単語 ({idx + 1}/3)")
-    
-    # 日本語を大きく赤文字で表示
-    st.markdown(f"「<span style='font-size: 26px; font-weight: bold; color: #FF4B4B;'>{word['meaning']}</span>」を 3回 入力しよう！", unsafe_allow_html=True)
-    
-    # ヒント機能
-    if not st.session_state.show_hint:
-        if st.button("つづりを見る（ヒント）"):
-            st.session_state.show_hint = True
-            st.rerun()
-    else:
-        st.markdown(f"つづり： <span style='font-size: 22px; font-weight: bold; color: black;'>{word['word']}</span>", unsafe_allow_html=
+    idx = st.session_
