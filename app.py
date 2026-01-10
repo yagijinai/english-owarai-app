@@ -52,21 +52,3 @@ def initialize_daily_data():
         review_pool = WORDS_DF[WORDS_DF['grade'] <= current_grade]
         st.session_state.review_queue = review_pool.sample(n=3).to_dict('records')
         # 今日の豆知識
-        st.session_state.daily_neta = NETA_DF.sample(n=1).iloc[0]
-    
-    return len(learned_ids), streak_count
-
-# 状態の初期化
-if "phase" not in st.session_state:
-    st.session_state.phase = "new"
-    st.session_state.current_word_idx = 0
-    st.session_state.review_idx = 0
-    st.session_state.wrong_word_id = None
-if "show_hint" not in st.session_state:
-    st.session_state.show_hint = False
-
-total_cleared, streak_count = initialize_daily_data()
-
-# アプリ設定
-st.set_page_config(page_title="毎日英語とお笑い", page_icon="📝")
-st.markdown("<h4 style='text-align: left;'>🔤 徹底復習モード！英語マスター</h4>", unsafe_allow_html=True
