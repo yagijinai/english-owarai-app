@@ -52,3 +52,47 @@ def initialize_daily_data():
         review_pool = WORDS_DF[WORDS_DF['grade'] <= current_grade]
         st.session_state.review_queue = review_pool.sample(n=3).to_dict('records')
         # 今日の豆知識
+        st.session_state.daily_neta = NETA_DF.sample(n=1).iloc[0]
+    
+    return len(learned_ids), streak_count
+
+# 状態の初期化
+if "phase" not in st.session_state:
+    st.session_state.phase = "new"
+    st.session_state.current_word_idx = 0
+    st.session_state.review_idx = 0
+    st.session_state.wrong_word_id = None
+if "show_hint" not in st.session_state:
+    st.session_state.show_hint = False
+
+total_cleared, streak_count = initialize_daily_data()
+
+# アプリ設定
+st.set_page_config(page_title="毎日英語とお笑い", page_icon="📝")
+st.markdown("<h4 style='text-align: left;'>🔤 徹底復習モード！英語マスター</h4>", unsafe_allow_html=True)
+
+# 記録を右上に表示
+st.markdown(f"<p style='text-align: right; color: gray; font-size: 12px; margin-bottom: 0;'>これまでクリア： {total_cleared} 個 | 🔥 連続 {streak_count} 日</p>", unsafe_allow_html=True)
+
+# --- ステップ1: 単語練習 ---
+if st.session_state.phase == "new":
+    idx = st.session_state.current_word_idx
+    practice_words = st.session_state.daily_practice_words
+    
+    if idx >= len(practice_words):
+        st.session_state.phase = "review"
+        st.rerun()
+
+    word = practice_words[idx]
+    st.subheader(f"ステップ1: 新しい単語 ({idx + 1}/3)")
+    
+    # 日本語を大きく赤文字で表示
+    st.markdown(f"「<span style='font-size: 26px; font-weight: bold; color: #FF4B4B;'>{word['meaning']}</span>」を 3回 入力しよう！", unsafe_allow_html=True)
+    
+    # ヒント機能
+    if not st.session_state.show_hint:
+        if st.button("つづりを見る（ヒント）"):
+            st.session_state.show_hint = True
+            st.rerun()
+    else:
+        st.markdown(f"つづり： <span style='font-size: 22px; font-weight: bold; color: black;'>{word['word']}</span>", unsafe_allow_html=
