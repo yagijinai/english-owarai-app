@@ -32,8 +32,7 @@ def initialize_daily_data():
     # 学習済みリストの取得
     learned_ids = st.query_params.get_all("learned_ids")
     
-    # 連続日数の計算用
-    last_clear_date = st.query_params.get("last_clear", None)
+    # 連続日数の取得
     streak_count = int(st.query_params.get("streak", 0))
     
     if "today_date" not in st.session_state or st.session_state.today_date != today_str:
