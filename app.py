@@ -22,7 +22,6 @@ FIRESTORE_BASE_URL = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_CO
 
 # --- 便利機能 ---
 def hash_password(password):
-    """パスワードを暗号化して保存するための関数"""
     return hashlib.sha256(password.encode()).hexdigest()
 
 def text_to_speech(text):
@@ -73,71 +72,101 @@ def save_user_full_data(username, password_hashed, streak, last_clear, learned_i
     requests.patch(url, params={"updateMask.fieldPaths": ["password", "streak", "last_clear", "learned_ids"]}, json=data)
 
 # --- メイン処理 ---
-st.set_page_config(page_title="お笑い英語マスター Pro", page_icon="🔒")
+st.set_page_config(page_title="お笑い英語マスター Pro", page_icon="📝")
 
-# ログイン処理
+# ログイン状態の管理
 if "user_name" not in st.session_state:
-    st.title("🔒 お笑い英語マスター")
-    
-    # 自動ログインの試行（初回のみ実行）
+    # ページ中央に寄せるためのスタイル
+    st.markdown("""
+        <style>
+        .main-title { font-size: 50px; color: #1E88E5; text-align: center; font-weight: bold; margin-bottom: 10px; }
+        .sub-title { font-size: 20px; text-align: center; color: #555; margin-bottom: 30px; }
+        .stButton>button { width: 100%; height: 60px; font-size: 20px; border-radius: 10px; }
+        </style>
+        """, unsafe_allow_html=True)
+
+    st.markdown('<div class="main-title">English Master Pro</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">～ お笑い芸人と学ぶ、最強の英単語アプリ ～</div>', unsafe_allow_html=True)
+
+    # ブラウザの保存情報を確認（JS）
     if "checked_local" not in st.session_state:
         components.html("""
             <script>
             var n = localStorage.getItem('eng_app_user');
             var p = localStorage.getItem('eng_app_pwd');
             if(n && p) { parent.window.location.hash = 'u=' + n + '&p=' + p; }
+            else { parent.window.location.hash = 'start=true'; }
             </script>
         """, height=0)
         st.session_state.checked_local = True
 
-    # URLからの自動ログイン
     q = st.query_params
-    if "u" in q and "p" in q:
-        u_name, u_pwd = q["u"], q["p"]
-        data = get_user_all_data(u_name)
-        if data and data["password"] == u_pwd:
-            st.session_state.user_name = u_name
-            st.session_state.streak = data["streak"]
-            st.session_state.last_clear = data["last_clear"]
-            st.session_state.learned_ids = data["learned_ids"]
-            st.rerun()
-
-    tab1, tab2 = st.tabs(["ログイン", "はじめて使う（新規登録）"])
     
-    with tab1:
-        login_name = st.text_input("名前").strip()
-        login_pwd = st.text_input("パスワード", type="password")
-        if st.button("ログイン"):
-            data = get_user_all_data(login_name)
-            if data and data["password"] == hash_password(login_pwd):
-                st.session_state.user_name = login_name
+    # A. 自動ログイン可能な場合
+    if "u" in q and "p" in q:
+        saved_name = q["u"]
+        st.markdown(f"<h3 style='text-align: center;'>おかえりなさい、{saved_name} さん！</h3>", unsafe_allow_html=True)
+        if st.button("🔥 続きから勉強をはじめる"):
+            data = get_user_all_data(saved_name)
+            if data and data["password"] == q["p"]:
+                st.session_state.user_name = saved_name
                 st.session_state.streak = data["streak"]
                 st.session_state.last_clear = data["last_clear"]
                 st.session_state.learned_ids = data["learned_ids"]
-                set_local_storage(login_name, data["password"])
                 st.rerun()
             else:
-                st.error("名前かパスワードが違います")
+                st.error("保存された情報が古いです。もう一度ログインしてください。")
+                st.query_params.clear()
+                st.rerun()
+        
+        if st.button("👤 別の名前でログイン・登録"):
+            st.query_params.clear()
+            st.rerun()
 
-    with tab2:
-        new_name = st.text_input("新しい名前").strip()
-        new_pwd = st.text_input("新しいパスワード", type="password")
-        if st.button("登録してはじめる"):
-            if new_name and new_pwd:
-                if get_user_all_data(new_name):
-                    st.error("その名前はすでに使われています")
-                else:
-                    hpwd = hash_password(new_pwd)
-                    save_user_full_data(new_name, hpwd, 0, "", [])
-                    st.session_state.user_name = new_name
-                    st.session_state.streak = 0
-                    st.session_state.last_clear = ""
-                    st.session_state.learned_ids = []
-                    set_local_storage(new_name, hpwd)
+    # B. 新規または情報がない場合
+    else:
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔑 ログイン"): st.session_state.mode = "login"
+        with col2:
+            if st.button("✨ 新しくつくる"): st.session_state.mode = "signup"
+
+        # ログイン入力画面
+        if st.session_state.get("mode") == "login":
+            st.markdown("---")
+            l_name = st.text_input("名前").strip()
+            l_pwd = st.text_input("パスワード", type="password")
+            if st.button("ログインする"):
+                data = get_user_all_data(l_name)
+                if data and data["password"] == hash_password(l_pwd):
+                    st.session_state.user_name = l_name
+                    st.session_state.streak = data["streak"]
+                    st.session_state.last_clear = data["last_clear"]
+                    st.session_state.learned_ids = data["learned_ids"]
+                    set_local_storage(l_name, data["password"])
                     st.rerun()
+                else: st.error("名前かパスワードが違います")
+
+        # 新規登録入力画面
+        elif st.session_state.get("mode") == "signup":
+            st.markdown("---")
+            n_name = st.text_input("新しい名前").strip()
+            n_pwd = st.text_input("新しいパスワード", type="password")
+            if st.button("登録してスタート！"):
+                if n_name and n_pwd:
+                    if get_user_all_data(n_name): st.error("その名前はすでに使われています")
+                    else:
+                        hpwd = hash_password(n_pwd)
+                        save_user_full_data(n_name, hpwd, 0, "", [])
+                        st.session_state.user_name = n_name
+                        st.session_state.streak = 0
+                        st.session_state.last_clear = ""
+                        st.session_state.learned_ids = []
+                        set_local_storage(n_name, hpwd)
+                        st.rerun()
     st.stop()
 
-# --- 学習画面 (前回同様) ---
+# --- 学習画面 (ロジックは維持) ---
 username = st.session_state.user_name
 today_str = str(datetime.date.today())
 yesterday_str = str(datetime.date.today() - datetime.timedelta(days=1))
@@ -156,7 +185,7 @@ if "init_done" not in st.session_state:
 
 st.markdown(f"### 👤 {username} | 🔥 {st.session_state.streak} 日連続")
 
-# ... (学習フェーズのコードは前回と同じため維持)
+# 学習フェーズの表示
 if st.session_state.phase == "new":
     idx = st.session_state.current_word_idx
     word = st.session_state.daily_practice_words[idx]
@@ -183,7 +212,7 @@ elif st.session_state.phase == "review":
             if st.session_state.last_clear != today_str:
                 st.session_state.streak += 1
                 st.session_state.last_clear = today_str
-            # 保存時にハッシュ化されたパスワードを維持するために、現在のパスワードを再取得
+            # 現在のパスワードハッシュを再取得して保存
             curr_data = get_user_all_data(username)
             save_user_full_data(username, curr_data["password"], st.session_state.streak, st.session_state.last_clear, st.session_state.learned_ids)
             st.session_state.review_idx += 1
@@ -192,10 +221,10 @@ elif st.session_state.phase == "review":
     elif u_ans != "": st.error("ミス！特訓です")
 
 elif st.session_state.phase == "goal":
-    st.header("🎉 クリア！")
+    st.header("🎉 ミッション完了！")
     st.balloons()
     st.success(f"【{st.session_state.daily_neta['comedian']}】\n\n{st.session_state.daily_neta['fact']}")
-    if st.button("ログアウト"):
+    if st.button("ログアウトして終了"):
         st.query_params.clear()
         components.html("<script>localStorage.clear();</script>", height=0)
         for key in list(st.session_state.keys()): del st.session_state[key]
