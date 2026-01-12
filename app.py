@@ -1,5 +1,5 @@
 import streamlit as st
-import pd
+import pandas as pd
 import datetime
 import random
 import requests
@@ -45,7 +45,6 @@ def set_local_storage(user_id, display_name):
 @st.cache_data
 def load_data():
     try:
-        import pandas as pd
         words_df = pd.read_csv('words.csv')
         neta_df = pd.read_csv('neta.csv')
         words_df['id'] = words_df['word'] + "_" + words_df['meaning']
@@ -87,7 +86,6 @@ def save_user_data_by_id(user_id, display_name, streak, last_clear, learned_ids)
 # --- 画面構成設定 ---
 st.set_page_config(page_title="お笑い英語マスター Pro", page_icon="📝")
 
-# 状態の初期化
 if "user_id" not in st.session_state: st.session_state.user_id = None
 if "wrong_word_id" not in st.session_state: st.session_state.wrong_word_id = None
 
@@ -102,7 +100,6 @@ if st.session_state.user_id is None:
     st.markdown('<div class="main-title">English Master Pro</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">～ お笑い芸人と学ぶ、最強の英単語アプリ ～</div>', unsafe_allow_html=True)
 
-    # ブラウザの自動ログインチェック
     if "check_js" not in st.session_state:
         components.html("""
             <script>
@@ -129,7 +126,6 @@ if st.session_state.user_id is None:
                 st.session_state.last_clear = data["last_clear"]
                 st.session_state.learned_ids = data["learned_ids"]
                 st.rerun()
-        
         if st.button("👤 別のなまえでログイン"):
             st.query_params.clear()
             components.html("<script>localStorage.clear();</script>", height=0)
@@ -145,13 +141,11 @@ if st.session_state.user_id is None:
                 if not data:
                     save_user_data_by_id(u_id, n_input, 0, "", [])
                     data = {"display_name": n_input, "streak": 0, "last_clear": "", "learned_ids": []}
-                
                 st.session_state.user_id = u_id
                 st.session_state.user_name = n_input
                 st.session_state.streak = data["streak"]
                 st.session_state.last_clear = data["last_clear"]
                 st.session_state.learned_ids = data["learned_ids"]
-                
                 set_local_storage(u_id, n_input)
                 st.query_params["id"] = u_id
                 st.query_params["nm"] = n_input
@@ -166,25 +160,4 @@ yesterday_str = str(datetime.date.today() - datetime.timedelta(days=1))
 if "init_done" not in st.session_state:
     if st.session_state.last_clear != yesterday_str and st.session_state.last_clear != today_str:
         st.session_state.streak = 0
-    random.seed(int(today_str.replace("-", "")))
-    grade_pool = WORDS_DF[WORDS_DF['grade'] == 1]
-    unlearned_pool = grade_pool[~grade_pool['id'].isin(st.session_state.learned_ids)]
-    if len(unlearned_pool) < 3: unlearned_pool = grade_pool
-    st.session_state.daily_practice_words = unlearned_pool.sample(n=3).to_dict('records')
-    st.session_state.review_queue = WORDS_DF.sample(n=3).to_dict('records')
-    st.session_state.daily_neta = NETA_DF.sample(n=1).iloc[0]
-    st.session_state.phase = "new"
-    st.session_state.current_word_idx = 0
-    st.session_state.review_idx = 0
-    st.session_state.init_done = True
-
-st.markdown(f"### 👤 {username} | 🔥 {st.session_state.streak} 日連続")
-
-# フェーズ1: 練習
-if st.session_state.phase == "new":
-    idx = st.session_state.current_word_idx
-    word = st.session_state.daily_practice_words[idx]
-    st.subheader(f"Step 1: 練習 ({idx+1}/3)")
-    st.markdown(f"<h1 style='color: #FF4B4B; text-align: center;'>{word['meaning']}</h1>", unsafe_allow_html=True)
-    if st.button("🔊 音を聞く"): text_to_speech(word['word'])
-    ans = [st.text_input(f"{i+1}回
+    random.seed(int(today_str.
