@@ -183,7 +183,7 @@ if st.session_state.phase == "practice":
     with c1:
         if st.button("🔊 お手本を聞く", use_container_width=True): text_to_speech(word['word'])
     with c2:
-        if st.button("👀 見本を表示", use_container_width=True):
+        if st.button("👀 英単語を表示", use_container_width=True):
             st.session_state.show_hint = not st.session_state.show_hint
     
     if st.session_state.show_hint:
