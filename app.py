@@ -78,10 +78,14 @@ def save_user_data(u_id, name, streak, last, l_ids):
     }
     requests.patch(url, params={"updateMask.fieldPaths": ["display_name", "streak", "last_clear", "learned_ids"]}, json=data)
 
-# --- 4. 画面制御の初期化 ---
+# --- 4. 画面制御の初期化（エラーを回避する安全な書き方） ---
 st.set_page_config(page_title="お笑い英語マスター Pro", page_icon="📝")
 
-if "user_id" not in st.session_state:
-    st.session_state.update({
-        "user_id": None, "user_name": None, "streak": 0, "last_clear": "", "learned_ids": [],
-        "phase": "login", "idx":
+# 1つずつ確実に初期化
+if "user_id" not in st.session_state: st.session_state.user_id = None
+if "user_name" not in st.session_state: st.session_state.user_name = None
+if "streak" not in st.session_state: st.session_state.streak = 0
+if "last_clear" not in st.session_state: st.session_state.last_clear = ""
+if "learned_ids" not in st.session_state: st.session_state.learned_ids = []
+if "phase" not in st.session_state: st.session_state.phase = "login"
+if "idx" not in st.session_state: st.session_state.idx = 0
