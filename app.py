@@ -78,41 +78,10 @@ def save_user_data(u_id, name, streak, last, l_ids):
     }
     requests.patch(url, params={"updateMask.fieldPaths": ["display_name", "streak", "last_clear", "learned_ids"]}, json=data)
 
-# --- 4. 画面制御 ---
+# --- 4. 画面制御の初期化 ---
 st.set_page_config(page_title="お笑い英語マスター Pro", page_icon="📝")
 
-# セッション変数の初期化
-keys = ["user_id", "user_name", "streak", "last_clear", "learned_ids", "phase", "idx", "p_list", "r_list", "neta", "wrong_id", "show_hint", "is_correct_feedback"]
-for k in keys:
-    if k not in st.session_state:
-        if k == "phase": st.session_state[k] = "login"
-        elif k in ["learned_ids", "p_list", "r_list"]: st.session_state[k] = []
-        elif k in ["streak", "idx"]: st.session_state[k] = 0
-        elif k in ["show_hint", "is_correct_feedback"]: st.session_state[k] = False
-        else: st.session_state[k] = None
-
-# --- 5. ログイン画面 ---
-if st.session_state.user_id is None:
-    st.title("English Master Pro")
-    
-    if "check_js" not in st.session_state:
-        components.html("""<script>
-            var id=localStorage.getItem('eng_app_userid');
-            var nm=localStorage.getItem('eng_app_name');
-            if(id && nm && !window.location.hash.includes('id=')){
-                parent.window.location.hash = 'id='+id+'&nm='+encodeURIComponent(nm);
-            }
-            </script>""", height=0)
-        st.session_state.check_js = True
-
-    q = st.query_params
-    if "id" in q and "nm" in q:
-        u_id, u_name = q["id"], q["nm"]
-        st.success("おかえりなさい、 " + str(u_name) + " さん！")
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🔥 続きから勉強をはじめる", use_container_width=True):
-                d = get_user_data(u_id)
-                if d:
-                    st.session_state.user_id, st.session_state.user_name = u_id, u_name
-                    st.session_state.streak, st.session_state.last_clear = d["streak
+if "user_id" not in st.session_state:
+    st.session_state.update({
+        "user_id": None, "user_name": None, "streak": 0, "last_clear": "", "learned_ids": [],
+        "phase": "login", "idx":
