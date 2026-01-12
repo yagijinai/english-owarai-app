@@ -34,10 +34,12 @@ def text_to_speech(text):
     components.html(js_code, height=0)
 
 def set_local_storage(user_id, display_name):
+    # JavaScriptで確実に保存
     js_code = f"""
     <script>
     localStorage.setItem('eng_app_userid', '{user_id}');
     localStorage.setItem('eng_app_name', '{display_name}');
+    console.log('Saved to localStorage');
     </script>
     """
     components.html(js_code, height=0)
@@ -83,21 +85,17 @@ def save_user_data_by_id(user_id, display_name, streak, last_clear, learned_ids)
     }
     requests.patch(url, params={"updateMask.fieldPaths": ["display_name", "streak", "last_clear", "learned_ids"]}, json=data)
 
-# --- ログイン・起動画面 ---
+# --- 画面構成 ---
 st.set_page_config(page_title="お笑い英語マスター Pro", page_icon="📝")
 
 # 状態の初期化
 if "wrong_word_id" not in st.session_state: st.session_state.wrong_word_id = None
+if "login_success" not in st.session_state: st.session_state.login_success = False
 
-# 真っ白画面対策：もし情報がURLにあるのにsession_stateにない場合は自動復旧を試みる
-q = st.query_params
-if "user_id" not in st.session_state and "id" in q and "nm" in q:
-    # 続きからボタンを表示するための準備
-    pass
-
-if "user_id" not in st.session_state:
+# メインのログイン判定
+if not st.session_state.login_success:
     st.markdown("""<style>
-    .main-title { font-size: 50px; color: #1E88E5; text-align: center; font-weight: bold; margin-bottom: 0px; }
+    .main-title { font-size: 50px; color: #1E88E5; text-align: center; font-weight: bold; }
     .sub-title { font-size: 18px; text-align: center; color: #555; margin-bottom: 40px; }
     div.stButton > button { width: 100%; height: 70px; font-size: 22px; font-weight: bold; border-radius: 15px; }
     </style>""", unsafe_allow_html=True)
@@ -105,7 +103,7 @@ if "user_id" not in st.session_state:
     st.markdown('<div class="main-title">English Master Pro</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">～ お笑い芸人と学ぶ、最強の英単語アプリ ～</div>', unsafe_allow_html=True)
 
-    # 初回アクセス時にブラウザ保存を確認
+    # ブラウザの保存情報をチェック
     if "check_js" not in st.session_state:
         components.html("""
             <script>
@@ -118,63 +116,57 @@ if "user_id" not in st.session_state:
         """, height=0)
         st.session_state.check_js = True
 
-    # 保存情報がある場合（おかえり画面）
+    q = st.query_params
+    
+    # パターン1: 「おかえり」状態
     if "id" in q and "nm" in q:
         u_id, u_name = q["id"], q["nm"]
         st.success(f"おかえりなさい！ {u_name} さん")
         if st.button("🔥 続きから勉強をはじめる"):
-            with st.spinner("データをよみこみ中..."):
-                data = get_user_data_by_id(u_id)
-                if data:
-                    st.session_state.user_id = u_id
-                    st.session_state.user_name = u_name
-                    st.session_state.streak = data["streak"]
-                    st.session_state.last_clear = data["last_clear"]
-                    st.session_state.learned_ids = data["learned_ids"]
-                    st.rerun()
-                else:
-                    st.error("エラーが発生しました。もう一度ログインしてください。")
-                    st.query_params.clear()
-                    st.rerun()
+            data = get_user_data_by_id(u_id)
+            if data:
+                st.session_state.user_id = u_id
+                st.session_state.user_name = u_name
+                st.session_state.streak = data["streak"]
+                st.session_state.last_clear = data["last_clear"]
+                st.session_state.learned_ids = data["learned_ids"]
+                st.session_state.login_success = True
+                st.rerun()
         
         if st.button("👤 別のなまえでログイン"):
             st.query_params.clear()
             components.html("<script>localStorage.clear();</script>", height=0)
-            time.sleep(0.5)
             st.rerun()
-            
-    # 保存情報がない場合（ログイン画面）
+
+    # パターン2: 新規ログイン入力
     else:
-        st.info("名前とパスワードを入力してね！")
         n_input = st.text_input("なまえ").strip()
         p_input = st.text_input("パスワード", type="password")
         if st.button("🚀 ログイン / 新規登録"):
             if n_input and p_input:
-                with st.spinner("通信中..."):
-                    u_id = get_user_id(n_input, p_input)
-                    data = get_user_data_by_id(u_id)
-                    if not data:
-                        data = {"display_name": n_input, "streak": 0, "last_clear": "", "learned_ids": []}
-                        save_user_data_by_id(u_id, n_input, 0, "", [])
-                    
-                    # セッションに保存
-                    st.session_state.user_id = u_id
-                    st.session_state.user_name = n_input
-                    st.session_state.streak = data["streak"]
-                    st.session_state.last_clear = data["last_clear"]
-                    st.session_state.learned_ids = data["learned_ids"]
-                    
-                    # ブラウザとURLに保存
-                    set_local_storage(u_id, n_input)
-                    st.query_params["id"] = u_id
-                    st.query_params["nm"] = n_input
-                    
-                    st.rerun()
-            else:
-                st.warning("名前とパスワードを入れてね！")
+                u_id = get_user_id(n_input, p_input)
+                data = get_user_data_by_id(u_id)
+                if not data:
+                    save_user_data_by_id(u_id, n_input, 0, "", [])
+                    data = {"display_name": n_input, "streak": 0, "last_clear": "", "learned_ids": []}
+                
+                # 情報保存
+                st.session_state.user_id = u_id
+                st.session_state.user_name = n_input
+                st.session_state.streak = data["streak"]
+                st.session_state.last_clear = data["last_clear"]
+                st.session_state.learned_ids = data["learned_ids"]
+                
+                set_local_storage(u_id, n_input)
+                st.query_params["id"] = u_id
+                st.query_params["nm"] = n_input
+                
+                # ここで一回成功フラグを立ててからリラン
+                st.session_state.login_success = True
+                st.rerun()
     st.stop()
 
-# --- 学習ロジック (ここから下は安定動作中) ---
+# --- 学習メイン画面 ---
 username, userid = st.session_state.user_name, st.session_state.user_id
 today_str = str(datetime.date.today())
 yesterday_str = str(datetime.date.today() - datetime.timedelta(days=1))
@@ -185,4 +177,39 @@ if "init_done" not in st.session_state:
     random.seed(int(today_str.replace("-", "")))
     grade_pool = WORDS_DF[WORDS_DF['grade'] == 1]
     unlearned_pool = grade_pool[~grade_pool['id'].isin(st.session_state.learned_ids)]
-    if len(unlearned_pool) < 3: unlearned_
+    if len(unlearned_pool) < 3: unlearned_pool = grade_pool
+    st.session_state.daily_practice_words = unlearned_pool.sample(n=3).to_dict('records')
+    st.session_state.review_queue = WORDS_DF.sample(n=3).to_dict('records')
+    st.session_state.daily_neta = NETA_DF.sample(n=1).iloc[0]
+    st.session_state.phase = "new"; st.session_state.current_word_idx = 0; st.session_state.review_idx = 0; st.session_state.init_done = True
+
+st.markdown(f"### 👤 {username} | 🔥 {st.session_state.streak} 日連続")
+
+if st.session_state.phase == "new":
+    idx = st.session_state.current_word_idx
+    word = st.session_state.daily_practice_words[idx]
+    st.subheader(f"Step 1: 練習 ({idx+1}/3)")
+    st.markdown(f"<h1 style='color: #FF4B4B; text-align: center;'>{word['meaning']}</h1>", unsafe_allow_html=True)
+    if st.button("🔊 音を聞く"): text_to_speech(word['word'])
+    ans = [st.text_input(f"{i+1}回目", key=f"p_{idx}_{i}").strip().lower() for i in range(3)]
+    if all(a == str(word['word']).lower() and a != "" for a in ans):
+        if st.button("次へ"):
+            if word['id'] not in st.session_state.learned_ids: st.session_state.learned_ids.append(word['id'])
+            st.session_state.current_word_idx += 1
+            if st.session_state.current_word_idx >= 3: st.session_state.phase = "review"
+            st.rerun()
+
+elif st.session_state.phase == "review":
+    r_idx = st.session_state.review_idx
+    word = st.session_state.review_queue[r_idx]
+    st.subheader(f"Step 2: 復習テスト ({r_idx+1}/3)")
+    st.markdown(f"<h1 style='color: #FF4B4B; text-align: center;'>{word['meaning']}</h1>", unsafe_allow_html=True)
+    if st.session_state.wrong_word_id == word['id']:
+        st.error(f"ミス！特訓です。正解は「{word['word']}」")
+        if st.button("🔊 正解の音を聞く"): text_to_speech(word['word'])
+        t_ans = [st.text_input(f"特訓 {i+1}/5", key=f"t_{r_idx}_{i}").strip().lower() for i in range(5)]
+        if all(a == str(word['word']).lower() and a != "" for a in t_ans):
+            if st.button("特訓クリア！次へ"):
+                st.session_state.wrong_word_id = None
+                st.session_state.review_idx += 1
+                if st.session_state.review_idx >= 3:
