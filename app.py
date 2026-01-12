@@ -43,14 +43,10 @@ def load_data():
     try:
         w = pd.read_csv('words.csv')
         n = pd.read_csv('neta.csv')
-        # csvの列名が正しいかチェック
-        if 'word' not in w.columns or 'meaning' not in w.columns:
-            st.error("words.csvに 'word' または 'meaning' 列が見当たりません。")
-            st.stop()
         w['id'] = w['word'].astype(str) + "_" + w['meaning'].astype(str)
         return w, n
     except Exception as e:
-        st.error("CSVファイルの読み込み中にエラーが発生しました: " + str(e))
+        st.error("CSVファイルの読み込み中にエラーが発生しました。ファイル名が正しいか確認してください。")
         st.stop()
 
 WORDS_DF, NETA_DF = load_data()
@@ -83,12 +79,13 @@ def save_user_data(u_id, name, streak, last, l_ids):
     }
     requests.patch(url, params={"updateMask.fieldPaths": ["display_name", "streak", "last_clear", "learned_ids"]}, json=data)
 
-# --- アプリ基本設定 ---
+# --- アプリ設定 ---
 st.set_page_config(page_title="お笑い英語マスター Pro", page_icon="📝")
 
 if "user_id" not in st.session_state: st.session_state.user_id = None
 if "phase" not in st.session_state: st.session_state.phase = "login"
 if "wrong_id" not in st.session_state: st.session_state.wrong_id = None
+if "show_hint" not in st.session_state: st.session_state.show_hint = False
 
 # --- 画面1: ログイン ---
 if st.session_state.user_id is None:
@@ -106,19 +103,27 @@ if st.session_state.user_id is None:
         st.session_state.check_js = True
 
     q = st.query_params
+    # 自動ログイン情報がある場合の「二択」画面
     if "id" in q and "nm" in q:
         u_id, u_name = q["id"], q["nm"]
         st.success("おかえりなさい！ " + str(u_name) + " さん")
-        if st.button("🔥 続きから勉強をはじめる", use_container_width=True):
-            d = get_user_data(u_id)
-            if d:
-                st.session_state.user_id = u_id
-                st.session_state.user_name = u_name
-                st.session_state.streak = d["streak"]
-                st.session_state.last_clear = d["last_clear"]
-                st.session_state.learned_ids = d["learned_ids"]
-                st.session_state.phase = "init"
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔥 続きから勉強をはじめる", use_container_width=True):
+                d = get_user_data(u_id)
+                if d:
+                    st.session_state.user_id, st.session_state.user_name = u_id, u_name
+                    st.session_state.streak, st.session_state.last_clear = d["streak"], d["last_clear"]
+                    st.session_state.learned_ids = d["learned_ids"]
+                    st.session_state.phase = "init"
+                    st.rerun()
+        with col2:
+            if st.button("👤 他の名前でログイン", use_container_width=True):
+                st.query_params.clear()
+                components.html("<script>localStorage.clear();</script>", height=0)
                 st.rerun()
+    # 新規・手動ログイン画面
     else:
         n_in = st.text_input("なまえ").strip()
         p_in = st.text_input("パスワード", type="password")
@@ -129,10 +134,8 @@ if st.session_state.user_id is None:
                 if not d:
                     save_user_data(u_id, n_in, 0, "", [])
                     d = {"display_name": n_in, "streak": 0, "last_clear": "", "learned_ids": []}
-                st.session_state.user_id = u_id
-                st.session_state.user_name = n_in
-                st.session_state.streak = d["streak"]
-                st.session_state.last_clear = d["last_clear"]
+                st.session_state.user_id, st.session_state.user_name = u_id, n_in
+                st.session_state.streak, st.session_state.last_clear = d["streak"], d["last_clear"]
                 st.session_state.learned_ids = d["learned_ids"]
                 set_local_storage(u_id, n_in)
                 st.query_params["id"], st.query_params["nm"] = u_id, n_in
@@ -144,77 +147,4 @@ if st.session_state.user_id is None:
 if st.session_state.phase == "init":
     today = str(datetime.date.today())
     yst = str(datetime.date.today() - datetime.timedelta(days=1))
-    if st.session_state.last_clear != yst and st.session_state.last_clear != today:
-        st.session_state.streak = 0
-    
-    random.seed(int(today.replace("-", "")))
-    # 学年(grade)が1のものを抽出。もしcsvにgrade列がない場合は全件から選ぶ。
-    if 'grade' in WORDS_DF.columns:
-        pool = WORDS_DF[WORDS_DF['grade'] == 1].copy()
-    else:
-        pool = WORDS_DF.copy()
-
-    unlearned = pool[~pool['id'].isin(st.session_state.learned_ids)]
-    target = unlearned if len(unlearned) >= 3 else pool
-    
-    st.session_state.p_list = target.sample(n=min(3, len(target))).to_dict('records')
-    st.session_state.r_list = WORDS_DF.sample(n=min(3, len(WORDS_DF))).to_dict('records')
-    st.session_state.neta = NETA_DF.sample(n=1).iloc[0]
-    st.session_state.idx = 0
-    st.session_state.phase = "practice"
-    st.rerun()
-
-# --- 共通サイドバー ---
-st.sidebar.write("👤 " + str(st.session_state.user_name))
-st.sidebar.write("🔥 " + str(st.session_state.streak) + " 日連続")
-
-# --- 画面3: 練習 ---
-if st.session_state.phase == "practice":
-    idx = st.session_state.idx
-    word = st.session_state.p_list[idx]
-    st.subheader("Step 1: 練習 (" + str(idx+1) + "/3)")
-    st.markdown("<h1 style='color:#FF4B4B; text-align:center;'>" + str(word['meaning']) + "</h1>", unsafe_allow_html=True)
-    
-    if st.button("🔊 お手本を聞く"): text_to_speech(word['word'])
-    
-    a1 = st.text_input("1回目", key="a1_" + str(idx)).strip().lower()
-    a2 = st.text_input("2回目", key="a2_" + str(idx)).strip().lower()
-    a3 = st.text_input("3回目", key="a3_" + str(idx)).strip().lower()
-    
-    correct = str(word['word']).lower()
-    if a1 == correct and a2 == correct and a3 == correct:
-        if st.button("次へ進む"):
-            if word['id'] not in st.session_state.learned_ids:
-                st.session_state.learned_ids.append(word['id'])
-            st.session_state.idx += 1
-            if st.session_state.idx >= 3:
-                st.session_state.idx = 0
-                st.session_state.phase = "test"
-            st.rerun()
-
-# --- 画面4: テスト ---
-elif st.session_state.phase == "test":
-    idx = st.session_state.idx
-    word = st.session_state.r_list[idx]
-    st.subheader("Step 2: 復習テスト (" + str(idx+1) + "/3)")
-    st.markdown("<h1 style='color:#FF4B4B; text-align:center;'>" + str(word['meaning']) + "</h1>", unsafe_allow_html=True)
-
-    if st.session_state.wrong_id == word['id']:
-        st.error("特訓：正解は " + str(word['word']))
-        t_ans = [st.text_input("特訓 " + str(i+1), key="t" + str(idx) + str(i)).strip().lower() for i in range(5)]
-        if all(a == str(word['word']).lower() and a != "" for a in t_ans):
-            if st.button("特訓クリア！"):
-                st.session_state.wrong_id = None
-                st.session_state.idx += 1
-                if st.session_state.idx >= 3: st.session_state.phase = "goal"
-                st.rerun()
-    else:
-        with st.form(key="test_form"):
-            u_in = st.text_input("英語で？").strip().lower()
-            if st.form_submit_button("判定"):
-                if u_in == str(word['word']).lower():
-                    st.session_state.idx += 1
-                    if st.session_state.idx >= 3:
-                        td = str(datetime.date.today())
-                        if st.session_state.last_clear != td:
-                            st.session_state.streak += 1
+    if
