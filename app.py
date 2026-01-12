@@ -7,14 +7,14 @@ import json
 import streamlit.components.v1 as components
 import hashlib
 
-# 1. ページ基本設定
-st.set_page_config(page_title="お笑い英語マスター 完全版", page_icon="📝")
+# 1. ページ設定
+st.set_page_config(page_title="お笑い英語マスター", page_icon="📝")
 
-# 2. データベース(Firestore)設定
+# 2. データベース設定
 FB_URL = "https://firestore.googleapis.com/v1/projects/english-ap/databases/(default)/documents/users"
 
-# 3. セッション状態（データの入れ物）をすべて空で初期化
-# これにより "AttributeError"（名前が見つからないエラー）を完全に防ぎます
+# 3. 【最重要】データの入れ物を最初にすべて用意する（AttributeError対策）
+# アプリが起動した瞬間に、必要な変数をすべて「空」の状態で作成します
 if "phase" not in st.session_state:
     st.session_state.update({
         "phase": "login",
@@ -32,17 +32,13 @@ if "phase" not in st.session_state:
         "neta": None
     })
 
-# 4. 音声再生機能
+# 4. 音声を出すための機能
 def play_sound(txt):
     t = str(txt).replace("'", "")
-    code = f"""<script>
-    var m = new SpeechSynthesisUtterance();
-    m.text = '{t}';
-    m.lang = 'en-US';
-    window.speechSynthesis.speak(m);
-    </script>"""
+    code = f"<script>var m=new SpeechSynthesisUtterance();m.text='{t}';m.lang='en-US';window.speechSynthesis.speak(m);</script>"
     components.html(code, height=0)
-    # 5. データの読み込み
+
+# 5. CSVファイルから単語を読み込む
 @st.cache_data
 def load_data():
     try:
@@ -55,7 +51,7 @@ def load_data():
 
 W_DF, N_DF = load_data()
 
-# 6. 保存データの取得・保存
+# 6. データベース(Firestore)との通信
 def load_user(uid):
     try:
         r = requests.get(f"{FB_URL}/{uid}", timeout=5)
@@ -83,7 +79,8 @@ def save_user(uid, nm, sk, lc, ids):
         requests.patch(f"{FB_URL}/{uid}", json=pay, timeout=5)
     except:
         pass
-        # 7. メインロジック
+
+# 7. メイン処理（画面の表示）
 if st.session_state.phase == "login":
     st.title("English Master Pro")
     n_in = st.text_input("なまえ").strip()
@@ -96,9 +93,12 @@ if st.session_state.phase == "login":
             st.rerun()
     st.stop()
 
+# サイドバー（ログイン後のみ表示）
+st.sidebar.write(f"👤 {st.session_state.unm} | 🔥 {st.session_state.streak} 日目")
+
 if st.session_state.phase == "init":
     if W_DF is None:
-        st.error("CSVエラー"); st.stop()
+        st.error("単語データが見つかりません"); st.stop()
     today = str(datetime.date.today())
     yst = str(datetime.date.today() - datetime.timedelta(days=1))
     if st.session_state.last_lc not in [yst, today]: st.session_state.streak = 0
@@ -113,23 +113,19 @@ if st.session_state.phase == "init":
     })
     st.rerun()
 
-st.sidebar.write(f"👤 {st.session_state.unm} | 🔥 {st.session_state.streak} 日")
-
 if st.session_state.phase == "practice":
     if st.session_state.idx >= len(st.session_state.p_list):
         st.session_state.update({"idx":0, "phase":"test"}); st.rerun()
     wd = st.session_state.p_list[st.session_state.idx]
-    st.subheader(f"Step 1: 練習 ({st.session_state.idx+1}/3)")
+    st.subheader(f"練習 ({st.session_state.idx+1}/3)")
     st.markdown(f"<h1 style='color:#FF4B4B;text-align:center;'>{wd['meaning']}</h1>", unsafe_allow_html=True)
     if st.button("🔊 音を聞く"): play_sound(wd['word'])
-    if st.button("👀 見本を見る"): st.session_state.show_hint = not st.session_state.show_hint
+    if st.button("👀 見本"): st.session_state.show_hint = not st.session_state.show_hint
     if st.session_state.show_hint: st.info(f"正解: {wd['word']}")
     
-    a1 = st.text_input("1回目", key=f"a1_{st.session_state.idx}").strip().lower()
-    a2 = st.text_input("2回目", key=f"a2_{st.session_state.idx}").strip().lower()
-    a3 = st.text_input("3回目", key=f"a3_{st.session_state.idx}").strip().lower()
-    if a1 == a2 == a3 == str(wd['word']).lower() and a1 != "":
-        if st.button("できた！次へ"):
+    a = [st.text_input(f"{i+1}回目", key=f"p{st.session_state.idx}_{i}").strip().lower() for i in range(3)]
+    if all(x == str(wd['word']).lower() for x in a) and a[0] != "":
+        if st.button("次へ"):
             if wd['id'] not in st.session_state.learned_ids: st.session_state.learned_ids.append(wd['id'])
             st.session_state.idx += 1; st.session_state.show_hint = False; st.rerun()
 
@@ -137,14 +133,14 @@ elif st.session_state.phase == "test":
     if st.session_state.idx >= len(st.session_state.r_list):
         st.session_state.phase = "goal"; st.rerun()
     wd = st.session_state.r_list[st.session_state.idx]
-    st.subheader(f"Step 2: テスト ({st.session_state.idx+1}/{len(st.session_state.r_list)})")
+    st.subheader(f"復習テスト ({st.session_state.idx+1}/{len(st.session_state.r_list)})")
     st.markdown(f"<h1 style='color:#FF4B4B;text-align:center;'>{wd['meaning']}</h1>", unsafe_allow_html=True)
     if st.session_state.is_ok:
         st.success("✨ 正解！！ ✨")
-        if st.button("次へ進む ➡️"): st.session_state.is_ok = False; st.session_state.idx += 1; st.rerun()
+        if st.button("次へ ➡️"): st.session_state.is_ok = False; st.session_state.idx += 1; st.rerun()
     else:
         with st.form(key=f"tf_{st.session_state.idx}"):
-            ans = st.text_input("英語で書くと？").strip().lower()
+            ans = st.text_input("英語で？").strip().lower()
             if st.form_submit_button("判定"):
                 if ans == str(wd['word']).lower(): st.session_state.is_ok = True
                 elif ans != "": st.session_state.update({"t_word":wd, "phase":"tokkun"})
@@ -152,10 +148,10 @@ elif st.session_state.phase == "test":
 
 elif st.session_state.phase == "tokkun":
     wd = st.session_state.t_word
-    st.error(f"特訓！ 5回書いて覚えよう。 正解: {wd['word']}")
+    st.error(f"特訓！ 正解: {wd['word']}")
     t = [st.text_input(f"{i+1}回目", key=f"t{i}").strip().lower() for i in range(5)]
     if all(x == str(wd['word']).lower() for x in t):
-        if st.button("特訓完了！もう一度挑戦"):
+        if st.button("特訓完了"):
             st.session_state.r_list.append(wd); st.session_state.idx += 1; st.session_state.phase = "test"; st.rerun()
 
 elif st.session_state.phase == "goal":
@@ -166,7 +162,6 @@ elif st.session_state.phase == "goal":
     st.balloons(); st.success("🎉 クリア！")
     if st.session_state.neta:
         st.info(f"💡 豆知識: {st.session_state.neta.get('comedian','')}\n\n{st.session_state.neta.get('fact','')}")
-    if st.button("ログアウトして終了"):
+    if st.button("終了（ログアウト）"):
         st.session_state.clear(); st.rerun()
-else:
-    st.session_state.phase = "login"; st.rerun()
+    
