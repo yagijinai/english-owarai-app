@@ -8,7 +8,7 @@ import streamlit.components.v1 as components
 import hashlib
 
 # ==========================================
-# 1. 基本設定とFirebase連携
+# 1. 基本設定（最高品質・安定性重視）
 # ==========================================
 st.set_page_config(page_title="お笑い英語マスター Pro", page_icon="📝")
 
@@ -36,7 +36,7 @@ def text_to_speech(text):
     components.html(js, height=0)
 
 # ==========================================
-# 2. データ読み込み（安全性重視）
+# 2. データ読み込み（異常検知機能付き）
 # ==========================================
 @st.cache_data
 def load_csv_data():
@@ -53,11 +53,11 @@ def load_csv_data():
 WORDS_DF, NETA_DF, LOAD_ERROR = load_csv_data()
 
 if LOAD_ERROR:
-    st.error(f"⚠️ エラー: {LOAD_ERROR}")
+    st.error(f"⚠️ 起動エラー: {LOAD_ERROR}")
     st.stop()
 
 # ==========================================
-# 3. データベース（Firestore）操作
+# 3. データベース操作（真っ白画面防止ガード）
 # ==========================================
 def fetch_user_data(u_id):
     url = f"{FIRESTORE_URL}/{u_id}"
@@ -65,13 +65,31 @@ def fetch_user_data(u_id):
         r = requests.get(url, timeout=5)
         if r.status_code == 200:
             f = r.json().get("fields", {})
+            
+            # 各項目を安全に抽出（データが欠けていても落ちないようにする）
+            d_name = f.get("display_name", {}).get("stringValue", "User")
+            
+            streak_val = f.get("streak", {}).get("integerValue", 0)
+            streak = int(streak_val)
+            
+            last_clear = f.get("last_clear", {}).get("stringValue", "")
+            
+            # 学習済みIDリストの安全な取得
+            learned_ids = []
+            l_raw = f.get("learned_ids", {}).get("arrayValue", {}).get("values", [])
+            for v in l_raw:
+                s_val = v.get("stringValue")
+                if s_val:
+                    learned_ids.append(s_val)
+            
             return {
-                "display_name": f.get("display_name", {}).get("stringValue", ""),
-                "streak": int(f.get("streak", {}).get("integerValue", 0)),
-                "last_clear": f.get("last_clear", {}).get("stringValue", ""),
-                "learned_ids": [v.get("stringValue") for v in f.get("learned_ids", {}).get("arrayValue", {}).get("values", []) if v.get("stringValue")]
+                "display_name": d_name,
+                "streak": streak,
+                "last_clear": last_clear,
+                "learned_ids": learned_ids
             }
-    except: pass
+    except Exception as e:
+        st.warning(f"データの取得中に小さな問題が起きました（無視して進めます）: {e}")
     return None
 
 def save_user_data(u_id, name, streak, last, l_ids):
@@ -84,7 +102,10 @@ def save_user_data(u_id, name, streak, last, l_ids):
             "learned_ids": {"arrayValue": {"values": [{"stringValue": str(i)} for i in l_ids]}}
         }
     }
-    requests.patch(url, json=data, timeout=5)
+    try:
+        requests.patch(url, json=data, timeout=5)
+    except:
+        pass
 
 # ==========================================
 # 4. セッション初期化
@@ -95,14 +116,16 @@ if "phase" not in st.session_state:
     st.session_state.phase = "login"
     st.session_state.is_correct_feedback = False
     st.session_state.show_hint = False
+    st.session_state.streak = 0
+    st.session_state.last_clear = ""
+    st.session_state.learned_ids = []
 
 # ==========================================
-# 5. 【修正版】ログイン画面（二択）
+# 5. ログイン画面（二択）
 # ==========================================
 if st.session_state.phase == "login":
     st.title("English Master Pro")
     
-    # ブラウザのメモリから名前を取得するJS
     if "checked_storage" not in st.session_state:
         components.html("""<script>
             var id=localStorage.getItem('eng_app_userid');
@@ -115,33 +138,37 @@ if st.session_state.phase == "login":
 
     q = st.query_params
     
-    # パターンA: 以前のログイン情報が残っている場合
     if "id" in q and "nm" in q:
         u_id, u_name = q["id"], q["nm"]
-        st.success(f"前回保存されたユーザー: **{u_name}**")
-        st.write("どちらにしますか？")
+        st.success(f"おかえりなさい、 **{u_name}** さん！")
         
         col1, col2 = st.columns(2)
         with col1:
             if st.button("🔥 続きをする", use_container_width=True):
-                d = fetch_user_data(u_id)
-                if d:
-                    st.session_state.user_id = u_id
-                    st.session_state.user_name = u_name
-                    st.session_state.streak = d["streak"]
-                    st.session_state.last_clear = d["last_clear"]
-                    st.session_state.learned_ids = d["learned_ids"]
-                    st.session_state.phase = "init"
-                    st.rerun()
-                else:
-                    st.error("データが見つかりませんでした。新しくログインしてください。")
+                # ここで真っ白になるのを防ぐため try-except で囲む
+                try:
+                    d = fetch_user_data(u_id)
+                    if d:
+                        st.session_state.user_id = u_id
+                        st.session_state.user_name = u_name
+                        st.session_state.streak = d["streak"]
+                        st.session_state.last_clear = d["last_clear"]
+                        st.session_state.learned_ids = d["learned_ids"]
+                        st.session_state.phase = "init"
+                        st.rerun()
+                    else:
+                        st.error("保存データが見つかりませんでした。新しくログインしてください。")
+                except Exception as e:
+                    st.error(f"データの読み込み中にエラーが発生しました: {e}")
+                    if st.button("新しくやり直す"):
+                        st.query_params.clear()
+                        st.rerun()
         with col2:
             if st.button("👤 新しくログインする", use_container_width=True):
                 st.query_params.clear()
                 components.html("<script>localStorage.clear();</script>", height=0)
+                st.session_state.clear() # セッションを完全にリセット
                 st.rerun()
-                
-    # パターンB: 新規、または「新しくログイン」を選んだ場合
     else:
         st.info("お名前とパスワードを入力してください")
         n_in = st.text_input("なまえ").strip()
@@ -160,7 +187,6 @@ if st.session_state.phase == "login":
                 st.session_state.last_clear = d["last_clear"]
                 st.session_state.learned_ids = d["learned_ids"]
                 
-                # ブラウザに保存
                 components.html(f"<script>localStorage.setItem('eng_app_userid','{u_id}');localStorage.setItem('eng_app_name','{n_in}');</script>", height=0)
                 st.query_params["id"] = u_id
                 st.query_params["nm"] = n_in
@@ -169,4 +195,37 @@ if st.session_state.phase == "login":
     st.stop()
 
 # ==========================================
-# 6. 以降の学習
+# 6. 学習ロジック（真っ白画面防止の徹底）
+# ==========================================
+if st.session_state.phase == "init":
+    try:
+        today = str(datetime.date.today())
+        yst = str(datetime.date.today() - datetime.timedelta(days=1))
+        
+        # 連続日数の更新
+        if st.session_state.last_clear != yst and st.session_state.last_clear != today:
+            st.session_state.streak = 0
+        
+        random.seed(int(today.replace("-", "")))
+        
+        # 練習単語の選出
+        unlearned = WORDS_DF[~WORDS_DF['id'].isin(st.session_state.learned_ids)]
+        if len(unlearned) < 3: unlearned = WORDS_DF
+        st.session_state.p_list = unlearned.sample(n=min(3, len(unlearned))).to_dict('records')
+        
+        # 復習テスト単語の選出
+        st.session_state.r_list = WORDS_DF.sample(n=min(3, len(WORDS_DF))).to_dict('records')
+        
+        # ネタの選出
+        st.session_state.neta = NETA_DF.sample(n=1).iloc[0]
+        
+        st.session_state.idx = 0
+        st.session_state.phase = "practice"
+        st.rerun()
+    except Exception as e:
+        st.error(f"初期化中にエラーが発生しました。データをリセットしてやり直してください: {e}")
+        if st.button("ログイン画面へ戻る"):
+            st.session_state.clear()
+            st.rerun()
+
+st.sidebar.write(f"👤 {st.session_state.user_name} | 🔥 {
