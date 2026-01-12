@@ -6,7 +6,7 @@ import requests
 import json
 import streamlit.components.v1 as components
 
-# --- Firebase 設定 (お父様の設定値を反映済み) ---
+# --- Firebase 設定 ---
 FIREBASE_CONFIG = {
     "apiKey": "AIzaSyB0Bd8aBmos2fHiD7XgH_S4yM5b__FHypI",
     "authDomain": "english-ap.firebaseapp.com",
@@ -19,15 +19,31 @@ FIREBASE_CONFIG = {
 
 FIRESTORE_BASE_URL = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_CONFIG['projectId']}/databases/(default)/documents/users"
 
-# --- 音声読み上げ用のJavaScript関数 ---
+# --- JavaScript: 音声読み上げ ---
 def text_to_speech(text):
-    """ブラウザの機能を使って英語を読み上げる"""
     js_code = f"""
     <script>
     var msg = new SpeechSynthesisUtterance();
     msg.text = "{text}";
     msg.lang = 'en-US';
     window.speechSynthesis.speak(msg);
+    </script>
+    """
+    components.html(js_code, height=0)
+
+# --- JavaScript: 名前をブラウザに保存・取得する魔法 ---
+def set_local_storage(key, value):
+    js_code = f"<script>localStorage.setItem('{key}', '{value}');</script>"
+    components.html(js_code, height=0)
+
+def get_local_storage_and_login():
+    """ブラウザの記録から名前を探して自動ログインを試みる"""
+    js_code = """
+    <script>
+    var savedName = localStorage.getItem('english_app_user');
+    if (savedName) {
+        parent.window.location.hash = 'user=' + savedName;
+    }
     </script>
     """
     components.html(js_code, height=0)
@@ -39,8 +55,8 @@ def load_data():
         neta_df = pd.read_csv('neta.csv')
         words_df['id'] = words_df['word'] + "_" + words_df['meaning']
         return words_df, neta_df
-    except Exception as e:
-        st.error("csvファイルが見つかりません。")
+    except:
+        st.error("csvが見つかりません。")
         st.stop()
 
 WORDS_DF, NETA_DF = load_data()
@@ -72,19 +88,39 @@ def save_user_data(username, streak, last_clear, learned_ids):
 # --- メイン処理 ---
 st.set_page_config(page_title="お笑い英語マスター Pro", page_icon="🔊")
 
+# 自動ログインのチェック（URLのハッシュを利用）
+query_params = st.query_params
+if "user" in query_params:
+    auto_name = query_params["user"]
+    if "user_name" not in st.session_state:
+        st.session_state.user_name = auto_name
+        user_data = get_user_data(auto_name)
+        st.session_state.streak = user_data["streak"]
+        st.session_state.last_clear = user_data["last_clear"]
+        st.session_state.learned_ids = user_data["learned_ids"]
+
+# 1. ログイン画面
 if "user_name" not in st.session_state:
     st.title("🔊 お笑い英語マスター")
+    st.write("前回の名前を読み込んでいます...")
+    # ブラウザ保存されている名前を確認するJSを起動
+    get_local_storage_and_login()
+    
     name = st.text_input("名前を入力してね").strip()
     if st.button("はじめる"):
         if name:
             st.session_state.user_name = name
+            # ブラウザに名前を保存
+            set_local_storage('english_app_user', name)
             user_data = get_user_data(name)
             st.session_state.streak = user_data["streak"]
             st.session_state.last_clear = user_data["last_clear"]
             st.session_state.learned_ids = user_data["learned_ids"]
+            st.query_params["user"] = name # URLに名前を保持
             st.rerun()
     st.stop()
 
+# --- 学習ロジック開始 (前回のコードを維持) ---
 username = st.session_state.user_name
 today_str = str(datetime.date.today())
 yesterday_str = str(datetime.date.today() - datetime.timedelta(days=1))
@@ -110,31 +146,25 @@ if "init_done" not in st.session_state:
 # UI表示
 st.markdown(f"### 👤 {username} | 🔥 {st.session_state.streak} 日連続")
 
-# --- 学習フェーズ ---
+# 学習フェーズの表示（以下省略せず全て含む）
 if st.session_state.phase == "new":
     idx = st.session_state.current_word_idx
     words = st.session_state.daily_practice_words
     if idx >= len(words):
         st.session_state.phase = "review"
         st.rerun()
-    
     word = words[idx]
     st.subheader(f"Step 1: 練習 ({idx+1}/3)")
     st.markdown(f"<h1 style='color: #FF4B4B; text-align: center;'>{word['meaning']}</h1>", unsafe_allow_html=True)
-    
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🔊 音を聞く"):
-            text_to_speech(word['word'])
+        if st.button("🔊 音を聞く"): text_to_speech(word['word'])
     with col2:
-        if st.button("💡 ヒント"):
-            st.info(f"つづり: {word['word']}")
-    
+        if st.button("💡 ヒント"): st.info(f"つづり: {word['word']}")
     ans = [st.text_input(f"{i+1}回目", key=f"p_{idx}_{i}").strip().lower() for i in range(3)]
     if all(a == str(word['word']).lower() and a != "" for a in ans):
         if st.button("次へ"):
-            if word['id'] not in st.session_state.learned_ids:
-                st.session_state.learned_ids.append(word['id'])
+            if word['id'] not in st.session_state.learned_ids: st.session_state.learned_ids.append(word['id'])
             st.session_state.current_word_idx += 1
             st.rerun()
 
@@ -144,14 +174,10 @@ elif st.session_state.phase == "review":
     if r_idx >= len(queue):
         st.session_state.phase = "goal"
         st.rerun()
-    
     word = queue[r_idx]
     st.subheader(f"Step 2: 復習テスト ({r_idx+1}/{len(queue)})")
     st.markdown(f"<h1 style='color: #FF4B4B; text-align: center;'>{word['meaning']}</h1>", unsafe_allow_html=True)
-
-    if st.button("🔊 発音を聞く"):
-        text_to_speech(word['word'])
-
+    if st.button("🔊 発音を聞く"): text_to_speech(word['word'])
     if st.session_state.wrong_word_id == word['id']:
         st.warning(f"正解は {word['word']} です")
         t_ans = [st.text_input(f"特訓 {i+1}/5", key=f"t_{r_idx}_{i}").strip().lower() for i in range(5)]
@@ -180,6 +206,7 @@ elif st.session_state.phase == "goal":
     st.header("🎉 クリア！")
     st.balloons()
     st.success(f"【{st.session_state.daily_neta['comedian']}】\n\n{st.session_state.daily_neta['fact']}")
-    if st.button("終了"):
-        del st.session_state.init_done
+    if st.button("ログアウト（名前を変える）"):
+        st.query_params.clear()
+        for key in list(st.session_state.keys()): del st.session_state[key]
         st.rerun()
