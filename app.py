@@ -78,6 +78,10 @@ def save_user_data_by_id(user_id, display_name, streak, last_clear, learned_ids)
 # --- ログイン画面 ---
 st.set_page_config(page_title="お笑い英語マスター Pro", page_icon="📝")
 
+# エラー防止：セッション状態の初期化
+if "wrong_word_id" not in st.session_state:
+    st.session_state.wrong_word_id = None
+
 if "user_id" not in st.session_state:
     st.markdown("""<style>.main-title { font-size: 50px; color: #1E88E5; text-align: center; font-weight: bold; }
     .sub-title { font-size: 20px; text-align: center; color: #555; margin-bottom: 30px; }
@@ -140,7 +144,7 @@ if "init_done" not in st.session_state:
     st.session_state.daily_practice_words = unlearned_pool.sample(n=3).to_dict('records')
     st.session_state.review_queue = WORDS_DF.sample(n=3).to_dict('records')
     st.session_state.daily_neta = NETA_DF.sample(n=1).iloc[0]
-    st.session_state.phase = "new"; st.session_state.current_word_idx = 0; st.session_state.review_idx = 0; st.session_state.wrong_word_id = None; st.session_state.init_done = True
+    st.session_state.phase = "new"; st.session_state.current_word_idx = 0; st.session_state.review_idx = 0; st.session_state.init_done = True
 
 st.markdown(f"### 👤 {username} | 🔥 {st.session_state.streak} 日連続")
 
@@ -166,7 +170,6 @@ elif st.session_state.phase == "review":
     st.subheader(f"Step 2: 復習テスト ({r_idx+1}/3)")
     st.markdown(f"<h1 style='color: #FF4B4B; text-align: center;'>{word['meaning']}</h1>", unsafe_allow_html=True)
     
-    # 【重要】特訓モードの処理
     if st.session_state.wrong_word_id == word['id']:
         st.error(f"ミス！特訓です。正解は「{word['word']}」")
         if st.button("🔊 正解の音を聞く"): text_to_speech(word['word'])
@@ -189,7 +192,6 @@ elif st.session_state.phase == "review":
                 if st.session_state.review_idx >= 3: st.session_state.phase = "goal"
                 st.rerun()
         elif u_ans != "":
-            # 間違えたらその単語のIDをセットしてリラン（これで特訓画面が出る）
             st.session_state.wrong_word_id = word['id']
             st.rerun()
 
