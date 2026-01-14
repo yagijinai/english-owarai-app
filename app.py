@@ -7,38 +7,24 @@ import json
 import streamlit.components.v1 as components
 import hashlib
 
-# 1. ページ設定
-st.set_page_config(page_title="お笑い英語マスター", page_icon="📝")
+# ページ基本設定
+st.set_page_config(page_title="お笑い英語マスター 完全版", page_icon="📝")
 
-# 2. データベース設定
-FB_URL = "https://firestore.googleapis.com/v1/projects/english-ap/databases/(default)/documents/users"
-
-# 3. 【最重要】データの入れ物を最初にすべて用意する（AttributeError対策）
-# アプリが起動した瞬間に、必要な変数をすべて「空」の状態で作成します
+# データの入れ物を最初に「空」で用意する (AttributeError対策)
 if "phase" not in st.session_state:
     st.session_state.update({
-        "phase": "login",
-        "uid": None,
-        "unm": "Guest",
-        "streak": 0,
-        "last_lc": "",
-        "learned_ids": [],
-        "p_list": [],
-        "r_list": [],
-        "idx": 0,
-        "show_hint": False,
-        "is_ok": False,
-        "t_word": None,
-        "neta": None
+        "phase": "login", "uid": None, "unm": "Guest", "streak": 0,
+        "last_lc": "", "learned_ids": [], "p_list": [], "r_list": [],
+        "idx": 0, "show_hint": False, "is_ok": False, "t_word": None, "neta": None
     })
 
-# 4. 音声を出すための機能
+# 音声機能
 def play_sound(txt):
     t = str(txt).replace("'", "")
     code = f"<script>var m=new SpeechSynthesisUtterance();m.text='{t}';m.lang='en-US';window.speechSynthesis.speak(m);</script>"
     components.html(code, height=0)
 
-# 5. CSVファイルから単語を読み込む
+# データの読み込み
 @st.cache_data
 def load_data():
     try:
@@ -51,7 +37,9 @@ def load_data():
 
 W_DF, N_DF = load_data()
 
-# 6. データベース(Firestore)との通信
+# ユーザーデータの読み書き
+FB_URL = "https://firestore.googleapis.com/v1/projects/english-ap/databases/(default)/documents/users"
+
 def load_user(uid):
     try:
         r = requests.get(f"{FB_URL}/{uid}", timeout=5)
@@ -63,24 +51,16 @@ def load_user(uid):
                 "lc": f.get("last_clear", {}).get("stringValue", ""),
                 "ids": [v.get("stringValue") for v in f.get("learned_ids", {}).get("arrayValue", {}).get("values", []) if v.get("stringValue")]
             }
-    except:
-        pass
+    except: pass
     return None
 
 def save_user(uid, nm, sk, lc, ids):
     iv = [{"stringValue": str(i)} for i in ids]
-    pay = {"fields": {
-        "display_name": {"stringValue": str(nm)},
-        "streak": {"integerValue": int(sk)},
-        "last_clear": {"stringValue": str(lc)},
-        "learned_ids": {"arrayValue": {"values": iv}}
-    }}
-    try:
-        requests.patch(f"{FB_URL}/{uid}", json=pay, timeout=5)
-    except:
-        pass
+    pay = {"fields": {"display_name": {"stringValue": str(nm)}, "streak": {"integerValue": int(sk)}, "last_clear": {"stringValue": str(lc)}, "learned_ids": {"arrayValue": {"values": iv}}}}
+    try: requests.patch(f"{FB_URL}/{uid}", json=pay, timeout=5)
+    except: pass
 
-# 7. メイン処理（画面の表示）
+    # メイン処理の開始
 if st.session_state.phase == "login":
     st.title("English Master Pro")
     n_in = st.text_input("なまえ").strip()
@@ -93,12 +73,11 @@ if st.session_state.phase == "login":
             st.rerun()
     st.stop()
 
-# サイドバー（ログイン後のみ表示）
+# サイドバー表示
 st.sidebar.write(f"👤 {st.session_state.unm} | 🔥 {st.session_state.streak} 日目")
 
 if st.session_state.phase == "init":
-    if W_DF is None:
-        st.error("単語データが見つかりません"); st.stop()
+    if W_DF is None: st.error("データなし"); st.stop()
     today = str(datetime.date.today())
     yst = str(datetime.date.today() - datetime.timedelta(days=1))
     if st.session_state.last_lc not in [yst, today]: st.session_state.streak = 0
@@ -133,7 +112,7 @@ elif st.session_state.phase == "test":
     if st.session_state.idx >= len(st.session_state.r_list):
         st.session_state.phase = "goal"; st.rerun()
     wd = st.session_state.r_list[st.session_state.idx]
-    st.subheader(f"復習テスト ({st.session_state.idx+1}/{len(st.session_state.r_list)})")
+    st.subheader(f"テスト ({st.session_state.idx+1}/{len(st.session_state.r_list)})")
     st.markdown(f"<h1 style='color:#FF4B4B;text-align:center;'>{wd['meaning']}</h1>", unsafe_allow_html=True)
     if st.session_state.is_ok:
         st.success("✨ 正解！！ ✨")
@@ -151,7 +130,7 @@ elif st.session_state.phase == "tokkun":
     st.error(f"特訓！ 正解: {wd['word']}")
     t = [st.text_input(f"{i+1}回目", key=f"t{i}").strip().lower() for i in range(5)]
     if all(x == str(wd['word']).lower() for x in t):
-        if st.button("特訓完了"):
+        if st.button("完了"):
             st.session_state.r_list.append(wd); st.session_state.idx += 1; st.session_state.phase = "test"; st.rerun()
 
 elif st.session_state.phase == "goal":
@@ -162,6 +141,4 @@ elif st.session_state.phase == "goal":
     st.balloons(); st.success("🎉 クリア！")
     if st.session_state.neta:
         st.info(f"💡 豆知識: {st.session_state.neta.get('comedian','')}\n\n{st.session_state.neta.get('fact','')}")
-    if st.button("終了（ログアウト）"):
-        st.session_state.clear(); st.rerun()
-    
+    if st.button("終了"): st.session_state.clear(); st.rerun()
