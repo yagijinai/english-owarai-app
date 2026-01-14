@@ -10,13 +10,22 @@ import hashlib
 # 1. ページ基本設定
 st.set_page_config(page_title="お笑い英語マスター 完全版", page_icon="📝")
 
-# 2. データの入れ物を最初に準備 (エラー防止)
+# 2. データの入れ物を最初に準備 (エラー防止のため全ての変数を0や空で初期化)
 if "phase" not in st.session_state:
     st.session_state.update({
-        "phase": "start_choice", # 最初の二択画面からスタート
-        "uid": None, "unm": "Guest", "streak": 0,
-        "last_lc": "", "learned_ids": [], "p_list": [], "r_list": [],
-        "idx": 0, "show_hint": False, "is_ok": False, "t_word": None, "neta": None
+        "phase": "start_choice",
+        "uid": None,
+        "unm": "Guest",
+        "streak": 0,
+        "last_lc": "",
+        "learned_ids": [],
+        "p_list": [],
+        "r_list": [],
+        "idx": 0,
+        "show_hint": False,
+        "is_ok": False,
+        "t_word": None,
+        "neta": None
     })
 
 # 3. 音声再生機能
@@ -65,15 +74,12 @@ def save_user(uid, nm, sk, lc, ids):
 if st.session_state.phase == "start_choice":
     st.title("English Master Pro")
     st.subheader("どちらではじめますか？")
-    
     col1, col2 = st.columns(2)
     with col1:
         if st.button("🔄 同じIDでつづける", use_container_width=True):
-            # ブラウザから前回のIDを探すJS
             components.html("<script>var id=localStorage.getItem('eid');var nm=localStorage.getItem('enm');if(id){parent.window.location.hash='id='+id+'&nm='+encodeURIComponent(nm);}</script>", height=0)
             st.session_state.phase = "login"
             st.rerun()
-            
     with col2:
         if st.button("✨ 新しいIDではじめる", use_container_width=True):
             st.query_params.clear()
@@ -82,7 +88,7 @@ if st.session_state.phase == "start_choice":
             st.rerun()
     st.stop()
 
-# 7. ログイン・ユーザー登録画面
+# 7. ログイン画面
 if st.session_state.phase == "login":
     st.title("ログイン / ユーザー登録")
     p = st.query_params
@@ -109,45 +115,52 @@ if st.session_state.phase == "login":
 
 # 8. 学習の準備
 if st.session_state.phase == "init":
-    if W_DF is None: st.error("データなし"); st.stop()
-    today = str(datetime.date.today()); yst = str(datetime.date.today() - datetime.timedelta(days=1))
+    if W_DF is None: st.error("単語データが読み込めません"); st.stop()
+    today = str(datetime.date.today())
+    yst = str(datetime.date.today() - datetime.timedelta(days=1))
+    # 連続日数の更新チェック
     if st.session_state.last_lc not in [yst, today]: st.session_state.streak = 0
     random.seed(int(today.replace("-", "")))
     not_l = W_DF[~W_DF['id'].isin(st.session_state.learned_ids)]
     if len(not_l) < 3: not_l = W_DF
+    # 豆知識の取得 (DataFrameの判定を修正)
+    n_pick = None
+    if N_DF is not None and not N_DF.empty:
+        n_pick = N_DF.sample(n=1).iloc[0].to_dict()
+    
     st.session_state.update({
         "p_list": not_l.sample(n=min(3, len(not_l))).to_dict('records'),
         "r_list": W_DF.sample(n=min(3, len(W_DF))).to_dict('records'),
-        "neta": N_DF.sample(n=1).iloc[0] if N_DF is not None else None,
+        "neta": n_pick,
         "idx": 0, "phase": "practice"
     })
     st.rerun()
 
+# サイドバー表示 (ログイン後のみ)
 st.sidebar.write(f"👤 {st.session_state.unm} | 🔥 {st.session_state.streak} 日目")
 
 if st.session_state.phase == "practice":
     if st.session_state.idx >= len(st.session_state.p_list):
         st.session_state.update({"idx":0, "phase":"test"}); st.rerun()
     wd = st.session_state.p_list[st.session_state.idx]
-    st.subheader(f"Step 1: 練習 ({st.session_state.idx+1}/3)")
+    st.subheader(f"練習 ({st.session_state.idx+1}/3)")
     st.markdown(f"<h1 style='color:#FF4B4B;text-align:center;'>{wd['meaning']}</h1>", unsafe_allow_html=True)
     if st.button("🔊 音を聞く"): play_sound(wd['word'])
-    if st.button("👀 見本"): st.session_state.show_hint = not st.session_state.show_hint
-    if st.session_state.show_hint: st.info(f"正解: {wd['word']}")
     a = [st.text_input(f"{i+1}回目", key=f"p{st.session_state.idx}_{i}").strip().lower() for i in range(3)]
     if all(x == str(wd['word']).lower() for x in a) and a[0] != "":
         if st.button("次へ"):
             if wd['id'] not in st.session_state.learned_ids: st.session_state.learned_ids.append(wd['id'])
-            st.session_state.idx += 1; st.session_state.show_hint = False; st.rerun()
+            st.session_state.idx += 1; st.rerun()
 
 elif st.session_state.phase == "test":
     if st.session_state.idx >= len(st.session_state.r_list):
         st.session_state.phase = "goal"; st.rerun()
     wd = st.session_state.r_list[st.session_state.idx]
-    st.subheader(f"Step 2: テスト ({st.session_state.idx+1}/{len(st.session_state.r_list)})")
+    st.subheader(f"テスト ({st.session_state.idx+1}/{len(st.session_state.r_list)})")
     st.markdown(f"<h1 style='color:#FF4B4B;text-align:center;'>{wd['meaning']}</h1>", unsafe_allow_html=True)
     if st.session_state.is_ok:
-        st.success("✨ 正解！！ ✨"); (st.button("次へ ➡️") and (st.session_state.update({"is_ok":False,"idx":st.session_state.idx+1}) or st.rerun()))
+        st.success("✨ 正解！！ ✨")
+        if st.button("次へ ➡️"): st.session_state.is_ok = False; st.session_state.idx += 1; st.rerun()
     else:
         with st.form(key=f"tf_{st.session_state.idx}"):
             ans = st.text_input("英語で？").strip().lower()
@@ -160,9 +173,8 @@ elif st.session_state.phase == "tokkun":
     wd = st.session_state.t_word
     st.error(f"特訓！ 正解: {wd['word']}")
     t = [st.text_input(f"{i+1}回目", key=f"t{i}").strip().lower() for i in range(5)]
-    if all(x == str(wd['word']).lower() for x in t):
-        if st.button("完了"):
-            st.session_state.r_list.append(wd); st.session_state.idx += 1; st.session_state.phase = "test"; st.rerun()
+    if all(x == str(wd['word']).lower() for x in t) and st.button("完了"):
+        st.session_state.r_list.append(wd); st.session_state.idx += 1; st.session_state.phase = "test"; st.rerun()
 
 elif st.session_state.phase == "goal":
     today = str(datetime.date.today())
@@ -170,5 +182,7 @@ elif st.session_state.phase == "goal":
         st.session_state.streak += 1; st.session_state.last_lc = today
         save_user(st.session_state.uid, st.session_state.unm, st.session_state.streak, st.session_state.last_lc, st.session_state.learned_ids)
     st.balloons(); st.success("🎉 クリア！")
-    if st.session_state.neta: st.info(f"💡 豆知識: {st.session_state.neta.get('comedian','')}\n\n{st.session_state.neta.get('fact','')}")
+    # 豆知識（ネタ）の表示
+    if st.session_state.neta:
+        st.info(f"💡 豆知識: {st.session_state.neta.get('comedian','')} \n\n {st.session_state.neta.get('fact','')}")
     if st.button("終了"): st.session_state.clear(); st.rerun()
