@@ -57,6 +57,7 @@ html_start = """
         </section>
     </div>
 """
+
 # --- JavaScript パート ---
 # データの保存、日数の計算、画面切り替えのロジックです
 js_code = """
@@ -144,6 +145,7 @@ js_code = """
 </body>
 </html>
 """
+
 # --- アプリの統合と実行 ---
 # 上記のHTMLとJSを結合して、Streamlitのコンポーネントとして出力します
 full_html = html_start + js_code
