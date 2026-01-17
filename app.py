@@ -1,188 +1,141 @@
-import streamlit as st
-import pandas as pd
-import datetime
-import random
-import requests
-import json
-import streamlit.components.v1 as components
-import hashlib
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>学習アプリ - 継続・ヒント機能付き</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <section id="start-screen">
+            <h2>ようこそ</h2>
+            <div class="stats-mini" id="streak-display-start"></div>
+            <button onclick="handleStartMode('continue')">同じIDでつづける</button>
+            <button onclick="handleStartMode('new')">新しいIDではじめる</button>
+            
+            <div id="id-input-area" class="hidden">
+                <input type="text" id="user-id" placeholder="IDを入力してください">
+                <button onclick="confirmID()">決定</button>
+            </div>
+        </section>
 
-# 1. ページ基本設定
-st.set_page_config(page_title="お笑い英語マスター 完全版", page_icon="📝")
+        <section id="menu-screen" class="hidden">
+            <h2 id="welcome-msg"></h2>
+            <div class="stats-card">
+                <p>🔥 連続継続日数: <span id="streak-count">0</span>日</p>
+            </div>
+            <button onclick="startPractice()">練習をはじめる</button>
+            <button onclick="logout()">戻る</button>
+        </section>
 
-# 2. データの入れ物を最初に準備 (エラー防止のため全ての変数を0や空で初期化)
-if "phase" not in st.session_state:
-    st.session_state.update({
-        "phase": "start_choice",
-        "uid": None,
-        "unm": "Guest",
-        "streak": 0,
-        "last_lc": "",
-        "learned_ids": [],
-        "p_list": [],
-        "r_list": [],
-        "idx": 0,
-        "show_hint": False,
-        "is_ok": False,
-        "t_word": None,
-        "neta": None
-    })
+        <section id="practice-screen" class="hidden">
+            <h3>練習問題</h3>
+            <div id="question-area">
+                <p id="question-text">Q: 「バラスト」とは何のこと？</p>
+                <button id="hint-btn" onclick="showHint()">ヒントを見る</button>
+                <p id="hint-text" class="hidden">💡 ヒント：線路に敷いてあるアレです。</p>
+            </div>
+            <button onclick="backToMenu()">メニューに戻る</button>
+        </section>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
+body { font-family: sans-serif; display: flex; justify-content: center; padding: 20px; background: #f0f2f5; }
+#app { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
+.hidden { display: none; }
+button { width: 100%; padding: 12px; margin: 10px 0; border: none; border-radius: 8px; cursor: pointer; background: #007bff; color: white; font-size: 16px; }
+button:hover { background: #0056b3; }
+.stats-card { background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #ffeeba; }
+#hint-text { color: #666; font-style: italic; background: #e9ecef; padding: 10px; border-radius: 4px; margin-top: 10px; }
+// --- 状態管理 ---
+let currentUserID = localStorage.getItem('lastUserID') || "";
+let streak = parseInt(localStorage.getItem('streakCount')) || 0;
+let lastLoginDate = localStorage.getItem('lastLoginDate') || "";
 
-# 3. 音声再生機能
-def play_sound(txt):
-    t = str(txt).replace("'", "")
-    code = f"<script>var m=new SpeechSynthesisUtterance();m.text='{t}';m.lang='en-US';window.speechSynthesis.speak(m);</script>"
-    components.html(code, height=0)
+// --- 起動時の処理 ---
+window.onload = () => {
+    if (streak > 0) {
+        document.getElementById('streak-display-start').innerText = `現在 ${streak}日 連続中！`;
+    }
+};
 
-# 4. CSVデータの読み込み
-@st.cache_data
-def load_data():
-    try:
-        w = pd.read_csv('words.csv')
-        n = pd.read_csv('neta.csv')
-        w['id'] = w['word'].astype(str) + "_" + w['meaning'].astype(str)
-        return w, n
-    except:
-        return None, None
+// --- ID管理パート ---
+function handleStartMode(mode) {
+    if (mode === 'continue') {
+        if (currentUserID) {
+            // 前回のIDがあれば入力をスキップして直接ログイン
+            login(currentUserID);
+        } else {
+            alert("保存されたIDが見つかりません。新しく作成してください。");
+            document.getElementById('id-input-area').classList.remove('hidden');
+        }
+    } else {
+        // 新しいID入力欄を表示
+        document.getElementById('id-input-area').classList.remove('hidden');
+        document.getElementById('user-id').value = "";
+    }
+}
 
-W_DF, N_DF = load_data()
+function confirmID() {
+    const inputID = document.getElementById('user-id').value;
+    if (inputID) {
+        login(inputID);
+    } else {
+        alert("IDを入力してください");
+    }
+}
 
-# 5. ユーザーデータの読み書き (Firestore)
-FB_URL = "https://firestore.googleapis.com/v1/projects/english-ap/databases/(default)/documents/users"
-
-def load_user(uid):
-    try:
-        r = requests.get(f"{FB_URL}/{uid}", timeout=5)
-        if r.status_code == 200:
-            f = r.json().get("fields", {})
-            return {
-                "nm": f.get("display_name", {}).get("stringValue", "User"),
-                "sk": int(f.get("streak", {}).get("integerValue", 0)),
-                "lc": f.get("last_clear", {}).get("stringValue", ""),
-                "ids": [v.get("stringValue") for v in f.get("learned_ids", {}).get("arrayValue", {}).get("values", []) if v.get("stringValue")]
-            }
-    except: pass
-    return None
-
-def save_user(uid, nm, sk, lc, ids):
-    iv = [{"stringValue": str(i)} for i in ids]
-    pay = {"fields": {"display_name": {"stringValue": str(nm)}, "streak": {"integerValue": int(sk)}, "last_clear": {"stringValue": str(lc)}, "learned_ids": {"arrayValue": {"values": iv}}}}
-    try: requests.patch(f"{FB_URL}/{uid}", json=pay, timeout=5)
-    except: pass
-
-    # 6. 開始時の選択画面
-if st.session_state.phase == "start_choice":
-    st.title("English Master Pro")
-    st.subheader("どちらではじめますか？")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🔄 同じIDでつづける", use_container_width=True):
-            components.html("<script>var id=localStorage.getItem('eid');var nm=localStorage.getItem('enm');if(id){parent.window.location.hash='id='+id+'&nm='+encodeURIComponent(nm);}</script>", height=0)
-            st.session_state.phase = "login"
-            st.rerun()
-    with col2:
-        if st.button("✨ 新しいIDではじめる", use_container_width=True):
-            st.query_params.clear()
-            components.html("<script>localStorage.clear();</script>", height=0)
-            st.session_state.phase = "login"
-            st.rerun()
-    st.stop()
-
-# 7. ログイン画面
-if st.session_state.phase == "login":
-    st.title("ログイン / ユーザー登録")
-    p = st.query_params
-    if "id" in p and "nm" in p:
-        u_id, u_nm = p["id"], p["nm"]
-        st.success(f"{u_nm} さんとしてログインしています")
-        if st.button("🚀 学習スタート！", use_container_width=True):
-            d = load_user(u_id)
-            if d:
-                st.session_state.update({"uid":u_id, "unm":u_nm, "streak":d["sk"], "last_lc":d["lc"], "learned_ids":d["ids"], "phase":"init"})
-                st.rerun()
+function login(id) {
+    currentUserID = id;
+    localStorage.setItem('lastUserID', id);
+    updateStreak();
     
-    n_in = st.text_input("なまえ").strip()
-    p_in = st.text_input("パスワード", type="password")
-    if st.button("ログイン / 新規登録", use_container_width=True):
-        if n_in and p_in:
-            u_id = hashlib.sha256((n_in + p_in).encode()).hexdigest()[:30]
-            d = load_user(u_id) or {"nm": n_in, "sk": 0, "lc": "", "ids": []}
-            st.session_state.update({"uid":u_id, "unm":n_in, "streak":d["sk"], "last_lc":d["lc"], "learned_ids":d["ids"], "phase":"init"})
-            components.html(f"<script>localStorage.setItem('eid','{u_id}');localStorage.setItem('enm','{n_in}');</script>", height=0)
-            st.query_params["id"], st.query_params["nm"] = u_id, n_in
-            st.rerun()
-    st.stop()
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('menu-screen').classList.remove('hidden');
+    document.getElementById('welcome-msg').innerText = `ID: ${id} さん`;
+    document.getElementById('streak-count').innerText = streak;
+}
 
-# 8. 学習の準備
-if st.session_state.phase == "init":
-    if W_DF is None: st.error("単語データが読み込めません"); st.stop()
-    today = str(datetime.date.today())
-    yst = str(datetime.date.today() - datetime.timedelta(days=1))
-    # 連続日数の更新チェック
-    if st.session_state.last_lc not in [yst, today]: st.session_state.streak = 0
-    random.seed(int(today.replace("-", "")))
-    not_l = W_DF[~W_DF['id'].isin(st.session_state.learned_ids)]
-    if len(not_l) < 3: not_l = W_DF
-    # 豆知識の取得 (DataFrameの判定を修正)
-    n_pick = None
-    if N_DF is not None and not N_DF.empty:
-        n_pick = N_DF.sample(n=1).iloc[0].to_dict()
+// --- 継続日数カウントパート ---
+function updateStreak() {
+    const today = new Date().toLocaleDateString();
     
-    st.session_state.update({
-        "p_list": not_l.sample(n=min(3, len(not_l))).to_dict('records'),
-        "r_list": W_DF.sample(n=min(3, len(W_DF))).to_dict('records'),
-        "neta": n_pick,
-        "idx": 0, "phase": "practice"
-    })
-    st.rerun()
+    if (lastLoginDate === today) {
+        // 今日すでにログイン済みなら何もしない
+    } else {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        
+        if (lastLoginDate === yesterday.toLocaleDateString()) {
+            streak++; // 連続更新
+        } else {
+            streak = 1; // 途切れた、または初回
+        }
+        lastLoginDate = today;
+        localStorage.setItem('streakCount', streak);
+        localStorage.setItem('lastLoginDate', lastLoginDate);
+    }
+}
 
-# サイドバー表示 (ログイン後のみ)
-st.sidebar.write(f"👤 {st.session_state.unm} | 🔥 {st.session_state.streak} 日目")
+// --- 練習・ヒントパート ---
+function startPractice() {
+    document.getElementById('menu-screen').classList.add('hidden');
+    document.getElementById('practice-screen').classList.remove('hidden');
+    document.getElementById('hint-text').classList.add('hidden'); // ヒントは隠しておく
+}
 
-if st.session_state.phase == "practice":
-    if st.session_state.idx >= len(st.session_state.p_list):
-        st.session_state.update({"idx":0, "phase":"test"}); st.rerun()
-    wd = st.session_state.p_list[st.session_state.idx]
-    st.subheader(f"練習 ({st.session_state.idx+1}/3)")
-    st.markdown(f"<h1 style='color:#FF4B4B;text-align:center;'>{wd['meaning']}</h1>", unsafe_allow_html=True)
-    if st.button("🔊 音を聞く"): play_sound(wd['word'])
-    a = [st.text_input(f"{i+1}回目", key=f"p{st.session_state.idx}_{i}").strip().lower() for i in range(3)]
-    if all(x == str(wd['word']).lower() for x in a) and a[0] != "":
-        if st.button("次へ"):
-            if wd['id'] not in st.session_state.learned_ids: st.session_state.learned_ids.append(wd['id'])
-            st.session_state.idx += 1; st.rerun()
+function showHint() {
+    document.getElementById('hint-text').classList.remove('hidden');
+}
 
-elif st.session_state.phase == "test":
-    if st.session_state.idx >= len(st.session_state.r_list):
-        st.session_state.phase = "goal"; st.rerun()
-    wd = st.session_state.r_list[st.session_state.idx]
-    st.subheader(f"テスト ({st.session_state.idx+1}/{len(st.session_state.r_list)})")
-    st.markdown(f"<h1 style='color:#FF4B4B;text-align:center;'>{wd['meaning']}</h1>", unsafe_allow_html=True)
-    if st.session_state.is_ok:
-        st.success("✨ 正解！！ ✨")
-        if st.button("次へ ➡️"): st.session_state.is_ok = False; st.session_state.idx += 1; st.rerun()
-    else:
-        with st.form(key=f"tf_{st.session_state.idx}"):
-            ans = st.text_input("英語で？").strip().lower()
-            if st.form_submit_button("判定"):
-                if ans == str(wd['word']).lower(): st.session_state.is_ok = True
-                elif ans != "": st.session_state.update({"t_word":wd, "phase":"tokkun"})
-                st.rerun()
+function backToMenu() {
+    document.getElementById('practice-screen').classList.add('hidden');
+    document.getElementById('menu-screen').classList.remove('hidden');
+}
 
-elif st.session_state.phase == "tokkun":
-    wd = st.session_state.t_word
-    st.error(f"特訓！ 正解: {wd['word']}")
-    t = [st.text_input(f"{i+1}回目", key=f"t{i}").strip().lower() for i in range(5)]
-    if all(x == str(wd['word']).lower() for x in t) and st.button("完了"):
-        st.session_state.r_list.append(wd); st.session_state.idx += 1; st.session_state.phase = "test"; st.rerun()
-
-elif st.session_state.phase == "goal":
-    today = str(datetime.date.today())
-    if st.session_state.last_lc != today:
-        st.session_state.streak += 1; st.session_state.last_lc = today
-        save_user(st.session_state.uid, st.session_state.unm, st.session_state.streak, st.session_state.last_lc, st.session_state.learned_ids)
-    st.balloons(); st.success("🎉 クリア！")
-    # 豆知識（ネタ）の表示
-    if st.session_state.neta:
-        st.info(f"💡 豆知識: {st.session_state.neta.get('comedian','')} \n\n {st.session_state.neta.get('fact','')}")
-    if st.button("終了"): st.session_state.clear(); st.rerun()
+function logout() {
+    document.getElementById('menu-screen').classList.add('hidden');
+    document.getElementById('start-screen').classList.remove('hidden');
+    document.getElementById('id-input-area').classList.add('hidden');
+}
