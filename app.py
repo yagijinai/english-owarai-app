@@ -1,15 +1,15 @@
 import streamlit as st
 import random
 
-# 1. ページ設定（スマホで見やすいよう中央寄せ）
-st.set_config(layout="centered", page_title="学習アプリ")
+# --- 1. ページ設定 (エラー修正済み) ---
+st.set_page_config(layout="centered", page_title="学習アプリ")
 
-# 2. セッション状態の初期化 (AttributeError対策)
+# --- 2. セッション状態の初期化 (AttributeError対策) ---
 def init_session_state():
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False
     if 'page' not in st.session_state:
-        st.session_state.page = "login"  # 画面遷移管理用
+        st.session_state.page = "login"
     if 'user_id' not in st.session_state:
         st.session_state.user_id = None
     if 'user_name' not in st.session_state:
@@ -24,7 +24,7 @@ init_session_state()
 # --- 3. ログイン・ID選択画面 ---
 if not st.session_state.logged_in:
     st.title("学習アプリ")
-    st.write("同じ端末でアプリをスタートしますか？")
+    st.subheader("同じ端末でアプリをスタートしますか？")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -45,30 +45,31 @@ if not st.session_state.logged_in:
     st.stop()
 
 # --- 4. サイドバー表示 (常に表示) ---
-st.sidebar.title("MENU")
-st.sidebar.write(f"👤 **{st.session_state.user_name}** さん")
-st.sidebar.write(f"🔥 連続学習: **{st.session_state.streak}日**")
+st.sidebar.title("マイステータス")
+st.sidebar.markdown(f"### 👤 {st.session_state.user_name}")
+st.sidebar.markdown(f"### 🔥 連続学習: {st.session_state.streak}日")
 
-# --- 5. メインコンテンツの切り替え ---
-# 「学習スタート」を押した後に画面が切り替わるよう st.session_state.page で管理します
+# --- 5. メインコンテンツ（ページ管理） ---
 if st.session_state.page == "login":
-    st.header("ログインしました")
-    st.write("今日の学習を始めましょう。")
+    st.header("ログイン完了")
+    st.write(f"おかえりなさい、{st.session_state.user_name}さん！")
     
+    # Pixel 7で反応を良くするため、直接セッション値を書き換える
     if st.button("🚀 学習スタート", use_container_width=True):
-        st.session_state.page = "training" # 練習ページへ切り替え
+        st.session_state.page = "training"
         st.rerun()
 
 elif st.session_state.page == "training":
-    st.header("✍️ 練習中...")
-    st.write("ここが学習・練習のメイン画面です。")
+    st.header("✍️ 練習画面")
+    st.write("ここに学習コンテンツが入ります。")
     
-    # 練習完了後の処理
+    # 学習完了処理
     if st.button("学習を完了する", use_container_width=True):
         st.session_state.streak += 1
         neta_list = [
             "サンドウィッチマンの伊達は、カロリーは熱に弱いから揚げ物は0キロカロリーだと言い張っている。",
-            "千鳥のノブは、昔『ノブ小池』に改名させられそうになったことがある。"
+            "千鳥のノブは、昔『ノブ小池』に改名させられそうになったことがある。",
+            "出川哲朗は、実は実家が老舗の海苔問屋のお金持ちである。"
         ]
         st.session_state.current_neta = random.choice(neta_list)
         st.session_state.page = "result"
@@ -76,12 +77,12 @@ elif st.session_state.page == "training":
 
 # --- 6. 結果・豆知識画面 ---
 elif st.session_state.page == "result":
-    st.success("学習完了！おめでとうございます！")
+    st.success("学習お疲れ様でした！")
     st.balloons()
     
     st.subheader("💡 今日の芸人豆知識")
     st.info(st.session_state.current_neta)
     
-    if st.button("トップに戻る", use_container_width=True):
+    if st.button("マイページへ戻る", use_container_width=True):
         st.session_state.page = "login"
         st.rerun()
