@@ -9,29 +9,26 @@ st.set_page_config(layout="centered", page_title="英単語練習アプリ")
 def init_session_state():
     if 'logged_in' not in st.session_state: st.session_state.logged_in = False
     if 'page' not in st.session_state: st.session_state.page = "login"
+    
+    # ユーザー識別用の情報
     if 'user_name' not in st.session_state: st.session_state.user_name = "お父様"
+    if 'password' not in st.session_state: st.session_state.password = "1234" # 初期パスワード
     if 'streak' not in st.session_state: st.session_state.streak = 10
     
-    # マスターリスト
+    # マスターリスト・練習用変数
     if 'master_words' not in st.session_state:
         st.session_state.master_words = [
             {"q": "りんご", "a": "apple"}, {"q": "本", "a": "book"},
             {"q": "猫", "a": "cat"}, {"q": "犬", "a": "dog"},
-            {"q": "ペン", "a": "pen"}, {"q": "机", "a": "desk"},
-            {"q": "鳥", "a": "bird"}, {"q": "卵", "a": "egg"}
+            {"q": "ペン", "a": "pen"}, {"q": "机", "a": "desk"}
         ]
-    
-    # 練習・テスト用
     if 'session_words' not in st.session_state: st.session_state.session_words = []
     if 'test_words' not in st.session_state: st.session_state.test_words = []
     if 'word_index' not in st.session_state: st.session_state.word_index = 0
     if 'repeat_count' not in st.session_state: st.session_state.repeat_count = 1
-    
-    # 特訓・ヒント用
     if 'penalty_word' not in st.session_state: st.session_state.penalty_word = None
     if 'penalty_count' not in st.session_state: st.session_state.penalty_count = 0
     if 'show_hint' not in st.session_state: st.session_state.show_hint = False
-    
     if 'input_key' not in st.session_state: st.session_state.input_key = 0
     if 'current_neta' not in st.session_state: st.session_state.current_neta = ""
 
@@ -42,43 +39,50 @@ def speak_word(word):
     js_code = f"<script>var m=new SpeechSynthesisUtterance('{word}');m.lang='en-US';window.speechSynthesis.speak(m);</script>"
     components.html(js_code, height=0)
 
-# --- 4. ログイン・ID選択画面 ---
+# --- 4. ログイン・パスワード認証画面 ---
 if not st.session_state.logged_in:
-    st.title("英単語練習アプリ")
+    st.title("🔐 英単語練習アプリ")
     
     if st.session_state.page == "login":
-        st.subheader(f"現在は「{st.session_state.user_name}」として設定されています。")
+        st.subheader(f"「{st.session_state.user_name}」としてログインしますか？")
+        pwd_input = st.text_input("パスワードを入力:", type="password")
+        
         col1, col2 = st.columns(2)
         with col1:
-            if st.button(f"同じID（{st.session_state.user_name}）でつづける", use_container_width=True):
-                st.session_state.logged_in = True
-                st.session_state.page = "main_menu"
-                st.rerun()
+            if st.button("ログイン", use_container_width=True):
+                if pwd_input == st.session_state.password:
+                    st.session_state.logged_in = True
+                    st.session_state.page = "main_menu"
+                    st.rerun()
+                else:
+                    st.error("パスワードが正しくありません。")
         with col2:
             if st.button("他のIDに変える", use_container_width=True):
                 st.session_state.page = "change_id"
                 st.rerun()
 
     elif st.session_state.page == "change_id":
-        st.subheader("新しい名前を入力してください")
-        new_name = st.text_input("名前:", value="").strip()
-        if st.button("この名前で始める", use_container_width=True):
-            if new_name:
+        st.subheader("新しいIDとパスワードを設定")
+        new_name = st.text_input("新しい名前:", value="").strip()
+        new_pwd = st.text_input("新しいパスワード:", type="password").strip()
+        
+        if st.button("このIDを作成して始める", use_container_width=True):
+            if new_name and new_pwd:
                 st.session_state.user_name = new_name
-                st.session_state.streak = 0  # 新しい人の場合は0日から
+                st.session_state.password = new_pwd
+                st.session_state.streak = 0
                 st.session_state.logged_in = True
                 st.session_state.page = "main_menu"
                 st.rerun()
             else:
-                st.warning("名前を入力してください。")
+                st.warning("名前とパスワードの両方を入力してください。")
     st.stop()
 
-# サイドバー表示
-st.sidebar.markdown(f"### 👤 {st.session_state.user_name}\n### 🔥 継続: {st.session_state.streak}日")
+st.sidebar.markdown(f"### 👤 ユーザー: {st.session_state.user_name}\n### 🔥 継続: {st.session_state.streak}日")
 
 # --- 5. メインメニュー ＆ 練習 ---
 if st.session_state.page == "main_menu":
-    st.header(f"こんにちは、{st.session_state.user_name}さん！")
+    st.header(f"ようこそ、{st.session_state.user_name}さん！")
     if st.button("🚀 学習スタート", use_container_width=True):
         st.session_state.session_words = random.sample(st.session_state.master_words, 3)
         st.session_state.word_index = 0
@@ -100,7 +104,6 @@ elif st.session_state.page == "training":
     if st.session_state.show_hint: st.info(f"答え： {word['a']}")
 
     u_in = st.text_input("入力:", key=f"t_{st.session_state.input_key}").strip().lower()
-    
     if st.button("判定", use_container_width=True):
         if u_in == word['a']:
             st.session_state.show_hint = False
@@ -143,7 +146,7 @@ elif st.session_state.page == "test":
 
 elif st.session_state.page == "penalty":
     word = st.session_state.penalty_word
-    st.error(f"【特訓】「{word['q']}」あと {6-st.session_state.penalty_count} 回！(正解:{word['a']})")
+    st.error(f"【特訓】「{word['q']}」をあと {6-st.session_state.penalty_count} 回！")
     p_in = st.text_input(f"{st.session_state.penalty_count}回目:", key=f"p_{st.session_state.input_key}").strip().lower()
     if st.button("送信", use_container_width=True):
         if p_in == word['a']:
@@ -157,11 +160,15 @@ elif st.session_state.page == "penalty":
             st.rerun()
 
 elif st.session_state.page == "result":
-    st.header("全問正解！お疲れ様でした 🎉")
+    st.header("全問正解！ 🎉")
     st.balloons()
-    neta = random.choice(["伊達：カロリーは足が速いから0kcal","ノブ：昔、ノブ小池だった","出川：実家は老舗の海苔屋"])
+    neta = random.choice(["伊達：カロリーは足が速いから逃げる","ノブ：昔、ノブ小池だった","出川：実家は老舗の海苔屋"])
     st.info(f"💡 芸人豆知識：{neta}")
     if st.button("マイページへ戻る", use_container_width=True):
         st.session_state.streak += 1
         st.session_state.page = "main_menu"
+        st.rerun()
+    if st.button("ログアウト", use_container_width=True):
+        st.session_state.logged_in = False
+        st.session_state.page = "login"
         st.rerun()
