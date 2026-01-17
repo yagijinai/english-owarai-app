@@ -1,21 +1,39 @@
+import streamlit as st
+import streamlit.components.v1 as components
+
+# 画面全体のタイトル設定
+st.set_page_config(page_title="学習アプリ", layout="centered")
+
+# --- HTML/CSS パート ---
+# デザインと各画面（スタート、メニュー、練習）の構造を定義します
+html_start = """
 <!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>学習アプリ - 継続・ヒント機能付き</title>
-    <link rel="stylesheet" href="style.css">
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #f0f2f5; padding: 10px; }
+        .container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .hidden { display: none; }
+        button { width: 100%; padding: 12px; margin: 10px 0; border: none; border-radius: 8px; cursor: pointer; background: #007bff; color: white; font-size: 16px; font-weight: bold; }
+        button:hover { background: #0056b3; }
+        .stats-card { background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #ffeeba; }
+        #hint-text { color: #666; font-style: italic; background: #e9ecef; padding: 10px; border-radius: 4px; margin-top: 10px; }
+        .streak-info { color: #d9534f; font-weight: bold; margin-bottom: 15px; font-size: 1.1em; }
+        input { width: 90%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px; }
+    </style>
 </head>
 <body>
-    <div id="app">
+    <div class="container">
         <section id="start-screen">
-            <h2>ようこそ</h2>
-            <div class="stats-mini" id="streak-display-start"></div>
+            <h2>学習アプリ</h2>
+            <div id="streak-display-start" class="streak-info"></div>
             <button onclick="handleStartMode('continue')">同じIDでつづける</button>
             <button onclick="handleStartMode('new')">新しいIDではじめる</button>
             
             <div id="id-input-area" class="hidden">
-                <input type="text" id="user-id" placeholder="IDを入力してください">
-                <button onclick="confirmID()">決定</button>
+                <input type="text" id="user-id" placeholder="ユーザーIDを入力">
+                <button onclick="confirmID()">決定してはじめる</button>
             </div>
         </section>
 
@@ -25,117 +43,110 @@
                 <p>🔥 連続継続日数: <span id="streak-count">0</span>日</p>
             </div>
             <button onclick="startPractice()">練習をはじめる</button>
-            <button onclick="logout()">戻る</button>
+            <button onclick="logout()">IDを変更する（戻る）</button>
         </section>
 
         <section id="practice-screen" class="hidden">
             <h3>練習問題</h3>
             <div id="question-area">
-                <p id="question-text">Q: 「バラスト」とは何のこと？</p>
-                <button id="hint-btn" onclick="showHint()">ヒントを見る</button>
-                <p id="hint-text" class="hidden">💡 ヒント：線路に敷いてあるアレです。</p>
+                <p><strong>Q: 電車の線路に敷いてある「石」の役割は？</strong></p>
+                <button id="hint-btn" style="background:#6c757d;" onclick="showHint()">ヒントを見る</button>
+                <p id="hint-text" class="hidden">💡 ヒント：重さを分散させたり、音を小さくしたりします。</p>
             </div>
-            <button onclick="backToMenu()">メニューに戻る</button>
+            <button onclick="backToMenu()" style="background:#28a745;">メニューに戻る</button>
         </section>
     </div>
-    <script src="script.js"></script>
+"""
+# --- JavaScript パート ---
+# データの保存、日数の計算、画面切り替えのロジックです
+js_code = """
+    <script>
+        let currentUserID = localStorage.getItem('lastUserID') || "";
+        let streak = parseInt(localStorage.getItem('streakCount')) || 0;
+        let lastLoginDate = localStorage.getItem('lastLoginDate') || "";
+
+        // アプリ起動時：継続日数があれば表示
+        window.onload = function() {
+            if (streak > 0) {
+                document.getElementById('streak-display-start').innerText = "現在 " + streak + "日 連続ログイン中！";
+            }
+        };
+
+        // ID選択の処理
+        function handleStartMode(mode) {
+            if (mode === 'continue' && currentUserID) {
+                // 同じIDでつづける場合：入力を省略して直接ログイン
+                login(currentUserID);
+            } else {
+                // 新しいIDの場合：入力欄を表示
+                document.getElementById('id-input-area').classList.remove('hidden');
+                document.getElementById('user-id').focus();
+            }
+        }
+
+        function confirmID() {
+            const id = document.getElementById('user-id').value;
+            if (id) login(id);
+            else alert("IDを入力してください");
+        }
+
+        function login(id) {
+            currentUserID = id;
+            localStorage.setItem('lastUserID', id);
+            updateStreak();
+            
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('menu-screen').classList.remove('hidden');
+            document.getElementById('welcome-msg').innerText = "こんにちは、" + id + " さん";
+            document.getElementById('streak-count').innerText = streak;
+        }
+
+        // 継続日数の計算
+        function updateStreak() {
+            const today = new Date().toLocaleDateString();
+            if (lastLoginDate !== today) {
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                
+                if (lastLoginDate === yesterday.toLocaleDateString()) {
+                    streak++; // 連続成功
+                } else if (lastLoginDate === "") {
+                    streak = 1; // 初回
+                } else {
+                    streak = 1; // 途切れた
+                }
+                lastLoginDate = today;
+                localStorage.setItem('streakCount', streak);
+                localStorage.setItem('lastLoginDate', lastLoginDate);
+            }
+        }
+
+        // 練習画面の制御
+        function startPractice() {
+            document.getElementById('menu-screen').classList.add('hidden');
+            document.getElementById('practice-screen').classList.remove('hidden');
+            document.getElementById('hint-text').classList.add('hidden');
+        }
+
+        function showHint() {
+            document.getElementById('hint-text').classList.remove('hidden');
+        }
+
+        function backToMenu() {
+            document.getElementById('practice-screen').classList.add('hidden');
+            document.getElementById('menu-screen').classList.remove('hidden');
+        }
+
+        function logout() {
+            location.reload(); // スタート画面に戻る
+        }
+    </script>
 </body>
 </html>
-body { font-family: sans-serif; display: flex; justify-content: center; padding: 20px; background: #f0f2f5; }
-#app { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
-.hidden { display: none; }
-button { width: 100%; padding: 12px; margin: 10px 0; border: none; border-radius: 8px; cursor: pointer; background: #007bff; color: white; font-size: 16px; }
-button:hover { background: #0056b3; }
-.stats-card { background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #ffeeba; }
-#hint-text { color: #666; font-style: italic; background: #e9ecef; padding: 10px; border-radius: 4px; margin-top: 10px; }
-// --- 状態管理 ---
-let currentUserID = localStorage.getItem('lastUserID') || "";
-let streak = parseInt(localStorage.getItem('streakCount')) || 0;
-let lastLoginDate = localStorage.getItem('lastLoginDate') || "";
+"""
+# --- アプリの統合と実行 ---
+# 上記のHTMLとJSを結合して、Streamlitのコンポーネントとして出力します
+full_html = html_start + js_code
 
-// --- 起動時の処理 ---
-window.onload = () => {
-    if (streak > 0) {
-        document.getElementById('streak-display-start').innerText = `現在 ${streak}日 連続中！`;
-    }
-};
-
-// --- ID管理パート ---
-function handleStartMode(mode) {
-    if (mode === 'continue') {
-        if (currentUserID) {
-            // 前回のIDがあれば入力をスキップして直接ログイン
-            login(currentUserID);
-        } else {
-            alert("保存されたIDが見つかりません。新しく作成してください。");
-            document.getElementById('id-input-area').classList.remove('hidden');
-        }
-    } else {
-        // 新しいID入力欄を表示
-        document.getElementById('id-input-area').classList.remove('hidden');
-        document.getElementById('user-id').value = "";
-    }
-}
-
-function confirmID() {
-    const inputID = document.getElementById('user-id').value;
-    if (inputID) {
-        login(inputID);
-    } else {
-        alert("IDを入力してください");
-    }
-}
-
-function login(id) {
-    currentUserID = id;
-    localStorage.setItem('lastUserID', id);
-    updateStreak();
-    
-    document.getElementById('start-screen').classList.add('hidden');
-    document.getElementById('menu-screen').classList.remove('hidden');
-    document.getElementById('welcome-msg').innerText = `ID: ${id} さん`;
-    document.getElementById('streak-count').innerText = streak;
-}
-
-// --- 継続日数カウントパート ---
-function updateStreak() {
-    const today = new Date().toLocaleDateString();
-    
-    if (lastLoginDate === today) {
-        // 今日すでにログイン済みなら何もしない
-    } else {
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        
-        if (lastLoginDate === yesterday.toLocaleDateString()) {
-            streak++; // 連続更新
-        } else {
-            streak = 1; // 途切れた、または初回
-        }
-        lastLoginDate = today;
-        localStorage.setItem('streakCount', streak);
-        localStorage.setItem('lastLoginDate', lastLoginDate);
-    }
-}
-
-// --- 練習・ヒントパート ---
-function startPractice() {
-    document.getElementById('menu-screen').classList.add('hidden');
-    document.getElementById('practice-screen').classList.remove('hidden');
-    document.getElementById('hint-text').classList.add('hidden'); // ヒントは隠しておく
-}
-
-function showHint() {
-    document.getElementById('hint-text').classList.remove('hidden');
-}
-
-function backToMenu() {
-    document.getElementById('practice-screen').classList.add('hidden');
-    document.getElementById('menu-screen').classList.remove('hidden');
-}
-
-function logout() {
-    document.getElementById('menu-screen').classList.add('hidden');
-    document.getElementById('start-screen').classList.remove('hidden');
-    document.getElementById('id-input-area').classList.add('hidden');
-}
+# heightを調整して、画面が収まるようにします
+components.html(full_html, height=550, scrolling=False)
