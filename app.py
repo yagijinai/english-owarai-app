@@ -4,21 +4,23 @@ import streamlit.components.v1 as components
 from datetime import datetime
 import time
 
-# --- 1. ページ設定 ---
+# --- 1. ページ設定 (最優先実行) ---
 st.set_page_config(layout="centered", page_title="英単語練習アプリ")
 
-# --- 2. セッション状態の初期化 (ユーザー情報と学習履歴を死守) ---
+# --- 2. セッション状態の初期化 (エラーの源をすべて塞ぐ) ---
 def init_session_state():
+    # ユーザーDBは永続的に保持
     if 'user_db' not in st.session_state:
         st.session_state.user_db = {"お父様": "1234", "娘さん": "1234"}
     
+    # 全ての必須変数をチェックして初期化
     defaults = {
         'logged_in': False,
         'page': "login",
         'last_user': None,
         'current_user': "",
         'streak': 10,
-        'learned_words': [], # ここに練習済みのスペルを保存
+        'learned_words': [], 
         'session_words': [],
         'test_words': [],
         'word_index': 0,
@@ -34,29 +36,42 @@ def init_session_state():
                 {"q": "りんご", "a": "apple"}, {"q": "本", "a": "book"}, {"q": "猫", "a": "cat"}, 
                 {"q": "犬", "a": "dog"}, {"q": "ペン", "a": "pen"}, {"q": "机", "a": "desk"},
                 {"q": "学校", "a": "school"}, {"q": "生徒", "a": "student"}, {"q": "先生", "a": "teacher"}
-            ],
-            "中学2年生": [{"q": "経験", "a": "experience"}, {"q": "快適な", "a": "comfortable"}],
-            "中学3年生": [{"q": "環境", "a": "environment"}, {"q": "影響", "a": "influence"}]
+            ]
         }
     }
     for key, value in defaults.items():
         if key not in st.session_state:
+            st.session_state[key] = value
 
-            # --- 3. ログイン画面 ---
+init_session_state()
+
+def speak_word(word):
+    js = f"<script>var m=new SpeechSynthesisUtterance('{word}');m.lang='en-US';window.speechSynthesis.speak(m);</script>"
+    components.html(js, height=0)
+
+def get_current_grade():
+    try:
+        today = datetime.now()
+        school_year = today.year if today.month >= 4 else today.year - 1
+        grade_diff = school_year - 2025
+        grades = ["中学1年生", "中学2年生", "中学3年生"]
+        return grades[grade_diff] if 0 <= grade_diff < len(grades) else "中学1年生"
+    except: return "中学1年生"
+
+    # --- 3. ログイン管理 ---
 if not st.session_state.logged_in:
     st.title("🔐 ログイン")
     
     if st.session_state.last_user:
-        # 二択の開始画面
         st.subheader("同じ端末でアプリをスタートします。")
-        col1, col2 = st.columns(2)
-        with col1:
+        c1, c2 = st.columns(2)
+        with c1:
             if st.button(f"同じID ({st.session_state.last_user}) で続ける", use_container_width=True):
                 st.session_state.current_user = st.session_state.last_user
                 st.session_state.logged_in = True
                 st.session_state.page = "main_menu"
                 st.rerun()
-        with col2:
+        with c2:
             if st.button("違うIDではじめる", use_container_width=True):
                 st.session_state.last_user = None
                 st.rerun()
@@ -88,37 +103,38 @@ if not st.session_state.logged_in:
                 st.session_state.logged_in = True
                 st.session_state.page = "main_menu"
                 st.session_state.confirm_register = False
-                st.success("登録完了！")
-                time.sleep(0.5)
                 st.rerun()
     st.stop()
 
-# --- ログイン成功後、最初に日数を表示 ---
+# --- 4. メインメニュー ---
 if st.session_state.page == "main_menu":
     st.header(f"🔥 連続 {st.session_state.streak}日目")
     st.subheader(f"こんにちは、{st.session_state.current_user}さん！")
-
-if st.button("🚀 学習スタート", use_container_width=True):
+    
+    if st.button("🚀 学習スタート", use_container_width=True):
         grade = get_current_grade()
         all_words = st.session_state.word_db.get(grade, [])
-        
-        # 【重要】未習単語（learned_wordsに含まれないもの）だけを抽出
+        # 未習のみ抽出
         unlearned = [w for w in all_words if w['a'] not in st.session_state.learned_words]
         
-        # もし未習単語がなくなったら、一度リセットして最初からにする
         if len(unlearned) < 3:
-            st.warning("この学年の単語をすべて習得しました！履歴をリセットして復習します。")
+            st.info("全ての単語を習得しました！履歴をリセットします。")
             st.session_state.learned_words = []
             unlearned = all_words
             
-        # 被らないように3つ選出
         st.session_state.session_words = random.sample(unlearned, 3)
         st.session_state.word_index = 0
         st.session_state.repeat_count = 1
         st.session_state.page = "training"
         st.rerun()
 
+# --- 5. 練習中 ---
 elif st.session_state.page == "training":
+    # 万が一のデータ消失ガード
+    if not st.session_state.session_words:
+        st.session_state.page = "main_menu"
+        st.rerun()
+
     word = st.session_state.session_words[st.session_state.word_index]
     st.header(f"練習 {st.session_state.word_index+1}/3")
     st.subheader(f"「{word['q']}」")
@@ -139,7 +155,6 @@ elif st.session_state.page == "training":
             if st.session_state.repeat_count < 3:
                 st.session_state.repeat_count += 1
             else:
-                # 3回成功したら「習得済み」としてリストに追加（二度と出ない）
                 if word['a'] not in st.session_state.learned_words:
                     st.session_state.learned_words.append(word['a'])
                 st.session_state.repeat_count = 1
@@ -147,14 +162,10 @@ elif st.session_state.page == "training":
                 
             if st.session_state.word_index >= len(st.session_state.session_words):
                 st.session_state.test_words = list(st.session_state.session_words)
-                # 復習テスト用に過去の単語を1つ追加
-                grade = get_current_grade()
-                past = [w for w in st.session_state.word_db[grade] if w['a'] in st.session_state.learned_words and w not in st.session_state.session_words]
-                if past: st.session_state.test_words.append(random.choice(past))
-                random.shuffle(st.session_state.test_words)
                 st.session_state.page = "test"
             st.rerun()
 
+# --- 6. 復習テスト ---
 elif st.session_state.page == "test":
     if not st.session_state.test_words:
         neta_list = ["サンドウィッチマン伊達：カステラは潰せば0kcal。", "千鳥ノブ：昔『ノブ小池』だった。", "やす子：元自衛官。"]
@@ -170,7 +181,7 @@ elif st.session_state.page == "test":
     t_in = st.text_input("回答:", key=f"v_{st.session_state.input_key}").strip().lower()
     if st.button("判定", use_container_width=True):
         if t_in == word['a']:
-            st.success("✨ 正解！ ✨") # ご要望通り毎回「正解」と表示
+            st.success("✨ 正解！ ✨")
             time.sleep(0.5)
             st.session_state.test_words.pop(0)
             st.session_state.input_key += 1
@@ -181,8 +192,9 @@ elif st.session_state.page == "test":
             st.session_state.page = "penalty"
             st.rerun()
 
+# --- 7. 特訓 ＆ 結果 ---
 elif st.session_state.page == "penalty":
-    if st.session_state.penalty_word is None:
+    if not st.session_state.penalty_word:
         st.session_state.page = "main_menu"
         st.rerun()
     word = st.session_state.penalty_word
