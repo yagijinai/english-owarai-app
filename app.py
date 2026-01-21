@@ -2,8 +2,9 @@ import streamlit as st
 import random
 import streamlit.components.v1 as components
 from datetime import datetime
+import time
 
-# --- 1. ページ設定 ---
+# --- 1. ページ設定 (最優先) ---
 st.set_page_config(layout="centered", page_title="英単語練習アプリ")
 
 # --- 2. セッション状態の初期化 ---
@@ -25,7 +26,7 @@ def init_session_state():
         'show_hint': False,
         'input_key': 0,
         'current_neta': "",
-        'confirm_register': False, # 新規登録確認用
+        'confirm_register': False,
         'word_db': {
             "中学1年生": [{"q": "りんご", "a": "apple"}, {"q": "本", "a": "book"}, {"q": "猫", "a": "cat"}, {"q": "犬", "a": "dog"}, {"q": "ペン", "a": "pen"}],
             "中学2年生": [{"q": "経験", "a": "experience"}, {"q": "快適な", "a": "comfortable"}],
@@ -56,7 +57,7 @@ def speak_word(word):
 if not st.session_state.logged_in:
     st.title("🔐 ログイン")
     
-    # 1. かんたんログイン（記憶がある場合）
+    # 1. かんたんログイン
     if st.session_state.last_user:
         st.subheader(f"おかえりなさい！")
         if st.button(f"同じID ({st.session_state.last_user}) で続ける", use_container_width=True):
@@ -81,6 +82,7 @@ if not st.session_state.logged_in:
                         st.session_state.current_user = u_in
                         st.session_state.last_user = u_in
                         st.session_state.logged_in = True
+                        st.session_state.page = "main_menu"
                         st.rerun()
                     else: st.error("パスワードが違います")
                 else: st.error("その名前は登録されていません")
@@ -91,22 +93,29 @@ if not st.session_state.logged_in:
                     if u_in in st.session_state.user_db:
                         st.warning("その名前は既に使われています")
                     else:
-                        st.session_state.confirm_register = True # 確認フラグを立てる
+                        st.session_state.confirm_register = True
                 else: st.warning("名前とパスワードを入力してください")
 
-        # 新規登録の最終確認
+        # 【対策】新規登録の確認フローを整理
         if st.session_state.confirm_register:
             st.info(f"新しいユーザー「{u_in}」を登録しますか？")
-            if st.button("はい、登録します"):
-                st.session_state.user_db[u_in] = p_in
-                st.session_state.current_user = u_in
-                st.session_state.last_user = u_in
-                st.session_state.logged_in = True
-                st.session_state.confirm_register = False
-                st.rerun()
-            if st.button("キャンセル"):
-                st.session_state.confirm_register = False
-                st.rerun()
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("はい、登録します"):
+                    # データを先にセット
+                    st.session_state.user_db[u_in] = p_in
+                    st.session_state.current_user = u_in
+                    st.session_state.last_user = u_in
+                    st.session_state.logged_in = True
+                    st.session_state.page = "main_menu"
+                    st.session_state.confirm_register = False
+                    st.success("登録完了！画面を切り替えます...")
+                    time.sleep(0.5) # ブラウザが描画する時間を確保
+                    st.rerun()
+            with c2:
+                if st.button("キャンセル"):
+                    st.session_state.confirm_register = False
+                    st.rerun()
     st.stop()
 
 # --- 4. メインメニュー ＆ 練習 ---
@@ -134,10 +143,10 @@ elif st.session_state.page == "training":
     st.header(f"練習 {st.session_state.word_index+1}/3")
     st.subheader(f"「{word['q']}」")
     
-    c1, c2 = st.columns(2)
-    with c1: 
+    col_v1, col_v2 = st.columns(2)
+    with col_v1: 
         if st.button("📢 音声"): speak_word(word['a'])
-    with c2:
+    with col_v2:
         if st.button("💡 答え"): st.session_state.show_hint = True
     
     if st.session_state.show_hint: st.info(f"正解： {word['a']}")
@@ -168,7 +177,7 @@ elif st.session_state.page == "test":
         neta_list = [
             "サンドウィッチマン伊達：カステラはギュッと潰せばカロリーも潰れるから0kcal。",
             "千鳥ノブ：昔、1ヶ月だけ『ノブ小池』に改名していた。",
-            "やす子：元自衛官で、ブルドーザーの運転ができる。"
+            "やす子：実は元自衛官で、ブルドーザーの運転ができる。"
         ]
         st.session_state.current_neta = random.choice(neta_list)
         st.session_state.streak += 1
