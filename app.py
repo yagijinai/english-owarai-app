@@ -3,46 +3,39 @@ import random
 import streamlit.components.v1 as components
 from datetime import datetime
 import time
+import json
+import firebase_admin
+from firebase_admin import credentials, firestore
 
 # --- 1. ページ設定 ---
 st.set_page_config(layout="centered", page_title="英単語練習アプリ")
 
-# --- 2. Firebase設定 (画像から取得した情報を反映済み) ---
-def init_firebase_sync():
-    # 画像の config 情報をセット
-    st.session_state.firebase_config = {
-        "apiKey": "AIzaSyD4Y2BfabSxlmddoCWJCgXNRbPTpUqHxF0",
-        "authDomain": "english-app-c7d19.firebaseapp.com",
-        "projectId": "english-app-c7d19",
-        "storageBucket": "english-app-c7d19.firebasestorage.app",
-        "messagingSenderId": "737877180458",
-        "appId": "1:737877180458:web:94d346c2aa284092958353"
-    }
-    
-    # クラウド代わりの仮DB（Firebase通信の本格実装までの繋ぎ）
-    if 'cloud_db' not in st.session_state:
-        st.session_state.cloud_db = {
-            "お父様": {"p": "1234", "s": 10, "l": []},
-            "娘さん": {"p": "1234", "s": 10, "l": []}
-        }
+# --- 2. Firebase連携 (GitHub Secretsの鍵を使用) ---
+def init_firebase_live():
+    # Firebaseが未初期化の場合のみ実行
+    if not firebase_admin._apps:
+        try:
+            # GitHubの「金庫(FIREBASE_SECRET)」から鍵を取り出す
+            if "FIREBASE_SECRET" in st.secrets:
+                key_dict = json.loads(st.secrets["FIREBASE_SECRET"])
+                cred = credentials.Certificate(key_dict)
+                firebase_admin.initialize_app(cred)
+            else:
+                st.error("GitHub Secretsに鍵が設定されていません。")
+        except Exception as e:
+            st.error(f"Firebase接続失敗: {e}")
+
+    # Firestore（データベース）を使える状態にする
+    if 'db' not in st.session_state:
+        st.session_state.db = firestore.client()
 
 def init_session_state():
-    init_firebase_sync()
-    # 画像のエラー(AttributeError)を完全に防ぐための初期化
+    init_firebase_live()
+    # 全ての変数を確実に初期化（AttributeErrorなどのエラー防止）
     defaults = {
-        'logged_in': False,
-        'page': "login",
-        'last_user': None,
-        'current_user': "",
-        'streak': 10,
-        'learned_words': [], 
-        'session_words': [],
-        'success_counts': {},
-        'test_words': [],
-        'penalty_word': None,
-        'penalty_count': 0,
-        'show_hint': False,
-        'input_key': 0,
+        'logged_in': False, 'page': "login", 'last_user': None, 'current_user': "",
+        'streak': 0, 'learned_words': [], 'session_words': [], 'success_counts': {},
+        'test_words': [], 'penalty_word': None, 'penalty_count': 0, 'input_key': 0,
         'confirm_register': False,
         'word_db': {
             "中学1年生": [
@@ -52,63 +45,60 @@ def init_session_state():
         }
     }
     for key, value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
+        if key not in st.session_state: st.session_state[key] = value
 
 init_session_state()
 
-def speak_word(word):
-    js = f"<script>var m=new SpeechSynthesisUtterance('{word}');m.lang='en-US';window.speechSynthesis.speak(m);</script>"
-    components.html(js, height=0)
-
-# --- 3. ログイン管理 ---
+# --- 3. ログイン画面 ---
 if not st.session_state.logged_in:
-    st.title("🔐 ログイン")
+    st.title("🔐 クラウド・ログイン")
     
+    # 前回の利用者がいる場合、二択からスタート
     if st.session_state.last_user:
-        st.subheader("同じ端末でアプリをスタートします。")
+        st.subheader("同じIDでつづけますか？")
         c1, c2 = st.columns(2)
         with c1:
-            if st.button(f"同じID ({st.session_state.last_user}) で続ける", use_container_width=True):
-                user_data = st.session_state.cloud_db.get(st.session_state.last_user)
-                st.session_state.current_user = st.session_state.last_user
-                st.session_state.streak = user_data['s']
-                st.session_state.learned_words = user_data['l']
-                st.session_state.logged_in = True
-                st.session_state.page = "main_menu"
-                st.rerun()
-        with c2:
-            if st.button("違うIDではじめる", use_container_width=True):
-                st.session_state.last_user = None
-                st.rerun()
-    else:
-        u_in = st.text_input("名前 (ID):").strip()
-        p_in = st.text_input("パスワード:", type="password").strip()
-        col_l, col_r = st.columns(2)
-        with col_l:
-            if st.button("ログイン", use_container_width=True):
-                if u_in in st.session_state.cloud_db and st.session_state.cloud_db[u_in]['p'] == p_in:
-                    user_data = st.session_state.cloud_db[u_in]
-                    st.session_state.current_user = u_in
-                    st.session_state.last_user = u_in
-                    st.session_state.streak = user_data['s']
-                    st.session_state.learned_words = user_data['l']
+            if st.button(f"はい ({st.session_state.last_user})", use_container_width=True):
+                # クラウドからデータを復元
+                doc = st.session_state.db.collection("users").document(st.session_state.last_user).get()
+                if doc.exists:
+                    data = doc.to_dict()
+                    st.session_state.current_user = st.session_state.last_user
+                    st.session_state.streak = data.get('streak', 0)
+                    st.session_state.learned_words = data.get('learned', [])
                     st.session_state.logged_in = True
                     st.session_state.page = "main_menu"
                     st.rerun()
-                else: st.error("名前またはパスワードが違います")
-        with col_r:
-            if st.button("新規登録", use_container_width=True):
-                if u_in and p_in: st.session_state.confirm_register = True
-        
-        if st.session_state.confirm_register:
-            if st.button(f"「{u_in}」を登録して開始"):
-                st.session_state.cloud_db[u_in] = {"p": p_in, "s": 0, "l": []}
-                st.session_state.current_user = u_in
-                st.session_state.last_user = u_in
-                st.session_state.logged_in = True
-                st.session_state.page = "main_menu"
+        with c2:
+            if st.button("いいえ（新しいID）", use_container_width=True):
+                st.session_state.last_user = None
                 st.rerun()
+    else:
+        # 新しいIDでのログイン/登録
+        u_in = st.text_input("名前 (ID):").strip()
+        p_in = st.text_input("パスワード:", type="password").strip()
+        if st.button("ログイン / 新規登録", use_container_width=True):
+            if u_in and p_in:
+                doc_ref = st.session_state.db.collection("users").document(u_in)
+                doc = doc_ref.get()
+                if doc.exists:
+                    if doc.to_dict()['password'] == p_in:
+                        data = doc.to_dict()
+                        st.session_state.current_user = u_in
+                        st.session_state.last_user = u_in
+                        st.session_state.streak = data.get('streak', 0)
+                        st.session_state.learned_words = data.get('learned', [])
+                        st.session_state.logged_in = True
+                        st.session_state.page = "main_menu"
+                        st.rerun()
+                    else: st.error("パスワードが違います")
+                else: # 新規作成
+                    doc_ref.set({"password": p_in, "streak": 0, "learned": []})
+                    st.session_state.current_user = u_in
+                    st.session_state.last_user = u_in
+                    st.session_state.logged_in = True
+                    st.session_state.page = "main_menu"
+                    st.rerun()
     st.stop()
 
 # --- 4. メインメニュー ＆ 練習 ---
@@ -117,18 +107,19 @@ if st.session_state.page == "main_menu":
     st.subheader(f"こんにちは、{st.session_state.current_user}さん！")
     
     if st.button("🚀 学習スタート", use_container_width=True):
-        all_words = st.session_state.word_db["中学1年生"]
-        unlearned = [w for w in all_words if w['a'] not in st.session_state.learned_words]
-        if len(unlearned) < 3:
-            st.session_state.learned_words = []
-            unlearned = all_words
-            
-        st.session_state.session_words = random.sample(unlearned, 3)
+        all_w = st.session_state.word_db["中学1年生"]
+        # 未学習のものを優先
+        unlearned = [w for w in all_w if w['a'] not in st.session_state.learned_words]
+        if len(unlearned) < 3: st.session_state.learned_words = []
+        
+        # 3問選んで練習開始
+        st.session_state.session_words = random.sample(unlearned if len(unlearned)>=3 else all_w, 3)
         st.session_state.success_counts = {w['a']: 0 for w in st.session_state.session_words}
         st.session_state.page = "training"
         st.rerun()
 
 elif st.session_state.page == "training":
+    # まだ3回成功していない単語を表示
     active = [w for w in st.session_state.session_words if st.session_state.success_counts[w['a']] < 3]
     if not active:
         st.session_state.test_words = list(st.session_state.session_words)
@@ -148,25 +139,24 @@ elif st.session_state.page == "training":
             st.session_state.input_key += 1
             del st.session_state.target_w
             st.rerun()
-        else:
-            st.error("おしい！もう一度書いてみよう")
 
 elif st.session_state.page == "test":
     if not st.session_state.test_words:
+        # すべて終わったらクラウドの情報を更新
         st.session_state.streak += 1
-        # クラウド保存をシミュレート（パート1のFirebase Configを使って連携可能）
-        st.session_state.cloud_db[st.session_state.current_user].update({
-            "s": st.session_state.streak, "l": st.session_state.learned_words
+        st.session_state.db.collection("users").document(st.session_state.current_user).update({
+            "streak": st.session_state.streak,
+            "learned": st.session_state.learned_words
         })
         st.session_state.page = "result"
         st.rerun()
 
     word = st.session_state.test_words[0]
-    st.subheader(f"復習テスト: 「{word['q']}」は？")
+    st.subheader(f"仕上げテスト: 「{word['q']}」は？")
     t_in = st.text_input("回答:", key=f"v_{st.session_state.input_key}").strip().lower()
     if st.button("判定"):
         if t_in == word['a']:
-            st.success("✨ 正解！ ✨")
+            st.success("✨ 正解！")
             time.sleep(0.5)
             if word['a'] not in st.session_state.learned_words:
                 st.session_state.learned_words.append(word['a'])
@@ -174,26 +164,13 @@ elif st.session_state.page == "test":
             st.session_state.input_key += 1
             st.rerun()
         else:
-            st.session_state.penalty_word = word
-            st.session_state.penalty_count = 1
-            st.session_state.page = "penalty"
-            st.rerun()
-
-elif st.session_state.page == "penalty":
-    word = st.session_state.penalty_word
-    st.error(f"【特訓】あと {6-st.session_state.penalty_count} 回！(正解:{word['a']})")
-    p_in = st.text_input(f"入力 {st.session_state.penalty_count}:", key=f"p_{st.session_state.input_key}").strip().lower()
-    if st.button("送信"):
-        if p_in == word['a']:
-            st.session_state.input_key += 1
-            if st.session_state.penalty_count < 5: st.session_state.penalty_count += 1
-            else:
-                st.session_state.test_words.append(st.session_state.test_words.pop(0))
-                st.session_state.page = "test"
+            st.error("間違えたので練習メニューに戻ります！")
+            time.sleep(1)
+            st.session_state.page = "main_menu"
             st.rerun()
 
 elif st.session_state.page == "result":
-    st.header("🎉 合格！")
+    st.header("🎉 クラウドに保存完了！")
     st.balloons()
     if st.button("メニューへ戻る"):
         st.session_state.page = "main_menu"
