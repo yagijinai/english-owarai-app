@@ -8,19 +8,18 @@ from firebase_admin import credentials, firestore
 # --- 1. ページ設定 ---
 st.set_page_config(layout="centered", page_title="英単語練習アプリ")
 
-# --- 2. Firebase連携 (GitHub Secretsの金庫を使用) ---
+# --- 2. Firebase連携 (GitHub Secretsを使用) ---
 def init_firebase_live():
     if not firebase_admin._apps:
         try:
             if "FIREBASE_SECRET" in st.secrets:
-                # 金庫から秘密鍵を取り出して接続
                 key_dict = json.loads(st.secrets["FIREBASE_SECRET"])
                 cred = credentials.Certificate(key_dict)
                 firebase_admin.initialize_app(cred)
             else:
-                st.error("金庫に鍵が見つかりません。")
+                st.error("GitHub Secretsに鍵が見つかりません。")
         except Exception as e:
-            st.error(f"接続エラー: {e}")
+            st.error(f"接続失敗: {e}")
 
     if 'db' not in st.session_state:
         st.session_state.db = firestore.client()
@@ -43,11 +42,9 @@ def init_session_state():
 
 init_session_state()
 
-# --- 3. ログイン管理 ---
 if not st.session_state.logged_in:
     st.title("🔐 クラウド英単語練習")
     
-    # 同じ端末で再開する場合の二択
     if st.session_state.last_user:
         st.subheader("同じIDでつづけますか？")
         c1, c2 = st.columns(2)
@@ -84,7 +81,7 @@ if not st.session_state.logged_in:
                         st.session_state.page = "main_menu"
                         st.rerun()
                     else: st.error("パスワードが違います")
-                else: # 新規ユーザー作成
+                else:
                     doc_ref.set({"password": p_in, "streak": 0, "learned": []})
                     st.session_state.current_user = u_in
                     st.session_state.last_user = u_in
@@ -93,13 +90,11 @@ if not st.session_state.logged_in:
                     st.rerun()
     st.stop()
 
-# --- 4. メインメニューと練習 ---
 if st.session_state.page == "main_menu":
     st.header(f"🔥 連続 {st.session_state.streak}日目")
     if st.button("🚀 学習スタート", use_container_width=True):
         all_w = st.session_state.word_db["中学1年生"]
         unlearned = [w for w in all_w if w['a'] not in st.session_state.learned_words]
-        # 未学習が少なければリセットして全単語から選ぶ
         if len(unlearned) < 3: st.session_state.learned_words = []
         st.session_state.session_words = random.sample(unlearned if len(unlearned)>=3 else all_w, 3)
         st.session_state.success_counts = {w['a']: 0 for w in st.session_state.session_words}
@@ -107,14 +102,12 @@ if st.session_state.page == "main_menu":
         st.rerun()
 
 elif st.session_state.page == "training":
-    # まだ3回正解していない単語を抽出
     active = [w for w in st.session_state.session_words if st.session_state.success_counts[w['a']] < 3]
     if not active:
         st.session_state.test_words = list(st.session_state.session_words)
         st.session_state.page = "test"
         st.rerun()
 
-    # 出題する単語を決定
     if 'target_wa' not in st.session_state or st.session_state.target_wa not in [w['a'] for w in active]:
         target = random.choice(active)
         st.session_state.target_wq = target['q']
@@ -132,7 +125,6 @@ elif st.session_state.page == "training":
 elif st.session_state.page == "test":
     if not st.session_state.test_words:
         st.session_state.streak += 1
-        # クラウド（Firestore）にデータを書き込み
         st.session_state.db.collection("users").document(st.session_state.current_user).update({
             "streak": st.session_state.streak, "learned": st.session_state.learned_words
         })
@@ -156,7 +148,7 @@ elif st.session_state.page == "test":
             st.rerun()
 
 elif st.session_state.page == "result":
-    st.header("🎉 クラウドに保存完了！")
+    st.header("🎉 保存完了！")
     st.balloons()
     if st.button("戻る"):
         st.session_state.page = "main_menu"
