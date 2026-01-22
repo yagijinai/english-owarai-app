@@ -17,10 +17,12 @@ def load_csv_data(filename):
         with open(filename, 'r', encoding='utf-8') as f:
             reader = csv.reader(f)
             for row in reader:
+                if not row: continue
                 if filename == 'words.csv' and len(row) >= 3:
                     data.append({"grade": row[0].strip(), "q": row[1].strip(), "a": row[2].strip().lower()})
-                elif filename == 'neta.csv' and row:
-                    data.append(row[0])
+                elif filename == 'neta.csv' and len(row) >= 2:
+                    # 芸人名とエピソードをセットで保存
+                    data.append({"name": row[0].strip(), "story": row[1].strip()})
     except Exception as e:
         st.error(f"ファイル {filename} の読み込みに失敗しました。")
     return data
@@ -44,8 +46,8 @@ def init_session_state():
         'logged_in': False, 'page': "login", 'last_user': None, 'current_user': "",
         'streak': 0, 'learned_words': [], 'session_words': [], 'success_counts': {},
         'test_words': [], 'input_key': 0, 'missed_word': None, 'missed_count': 0,
-        'current_episode': "", 'user_grade': "中1", 'grade_expiry': "",
-        'show_hint': False  # ヒント表示管理用
+        'current_episode': None, 'user_grade': "中1", 'grade_expiry': "",
+        'show_hint': False
     }
     for key, value in defaults.items():
         if key not in st.session_state: st.session_state[key] = value
@@ -140,14 +142,12 @@ elif st.session_state.page == "training":
     if 'target_wa' not in st.session_state or st.session_state.target_wa not in [w['a'] for w in active]:
         target = random.choice(active)
         st.session_state.target_wq, st.session_state.target_wa = target['q'], target['a']
-        st.session_state.show_hint = False # 新しい単語になったらヒントを隠す
+        st.session_state.show_hint = False
 
     st.subheader(f"「{st.session_state.target_wq}」 ({st.session_state.success_counts[st.session_state.target_wa] + 1}/3回)")
     
-    # --- ヘルプボタン ---
     if st.button("❓ つづりが分からない (ヘルプ)"):
         st.session_state.show_hint = True
-
     if st.session_state.show_hint:
         st.info(f"正解は: **{st.session_state.target_wa}**")
 
@@ -156,7 +156,7 @@ elif st.session_state.page == "training":
         if u_in == st.session_state.target_wa:
             st.session_state.success_counts[st.session_state.target_wa] += 1
             st.session_state.input_key += 1
-            st.session_state.show_hint = False # 次の入力のためにヒントを隠す
+            st.session_state.show_hint = False
             del st.session_state.target_wa
             st.rerun()
 
@@ -180,15 +180,15 @@ elif st.session_state.page == "test":
         st.session_state.db.collection("users").document(st.session_state.current_user).update({
             "streak": st.session_state.streak, "learned": st.session_state.learned_words
         })
+        # 芸人ネタを読み込む
         episodes = load_csv_data('neta.csv')
-        st.session_state.current_episode = random.choice(episodes) if episodes else "ネタ募集中！"
+        st.session_state.current_episode = random.choice(episodes) if episodes else {"name": "お疲れ様", "story": "ネタがまだ登録されていないようです！"}
         st.session_state.page = "result"
         st.rerun()
 
     word = st.session_state.test_words[0]
     st.subheader(f"最終テスト: 「{word['q']}」")
     
-    # 最終テストにもヘルプボタンをつける場合（甘やかしすぎなら削除OK）
     if st.button("❓ ヒント"):
         st.session_state.show_hint = True
     if st.session_state.show_hint:
@@ -213,7 +213,12 @@ elif st.session_state.page == "test":
 elif st.session_state.page == "result":
     st.header("🎉 合格！")
     st.balloons()
-    st.info(st.session_state.current_episode)
+    
+    # 芸人名とエピソードを両方表示
+    episode = st.session_state.current_episode
+    st.subheader(f"🎤 {episode['name']}") # 芸人名をサブ見出しで表示
+    st.info(episode['story'])           # エピソードを枠内に表示
+    
     if st.button("メニューへ戻る"):
         st.session_state.page = "main_menu"
         st.rerun()
