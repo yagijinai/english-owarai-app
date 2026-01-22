@@ -44,7 +44,8 @@ def init_session_state():
         'logged_in': False, 'page': "login", 'last_user': None, 'current_user': "",
         'streak': 0, 'learned_words': [], 'session_words': [], 'success_counts': {},
         'test_words': [], 'input_key': 0, 'missed_word': None, 'missed_count': 0,
-        'current_episode': "", 'user_grade': "中1", 'grade_expiry': ""
+        'current_episode': "", 'user_grade': "中1", 'grade_expiry': "",
+        'show_hint': False  # ヒント表示管理用
     }
     for key, value in defaults.items():
         if key not in st.session_state: st.session_state[key] = value
@@ -54,10 +55,8 @@ init_session_state()
 if not st.session_state.logged_in:
     st.title("🔐 クラウド・ログイン")
     
-    # 前回のIDがある場合は二択画面から開始
     if st.session_state.last_user:
         st.subheader(f"「{st.session_state.last_user}」さんですね？")
-        st.write("このIDでつづけますか？")
         c1, c2 = st.columns(2)
         with c1:
             if st.button("はい、これで始める", use_container_width=True):
@@ -78,7 +77,6 @@ if not st.session_state.logged_in:
     else:
         u_in = st.text_input("名前 (ID):").strip()
         p_in = st.text_input("パスワード:", type="password").strip()
-        st.write("---")
         grade_in = st.selectbox("あなたの学年を選んでね:", ["中1", "中2", "中3", "高1", "高2", "高3"])
         
         if st.button("ログイン / 新規登録", use_container_width=True):
@@ -86,7 +84,6 @@ if not st.session_state.logged_in:
                 now = datetime.now()
                 expiry_year = now.year if now.month <= 3 else now.year + 1
                 expiry_date = f"{expiry_year}-03-31"
-                
                 doc_ref = st.session_state.db.collection("users").document(u_in)
                 doc = doc_ref.get()
                 if doc.exists:
@@ -94,7 +91,6 @@ if not st.session_state.logged_in:
                         data = doc.to_dict()
                         st.session_state.current_user = u_in
                         st.session_state.last_user = u_in
-                        # 期限切れチェック
                         if not data.get('expiry') or datetime.now().strftime("%Y-%m-%d") > data.get('expiry'):
                             doc_ref.update({"grade": grade_in, "expiry": expiry_date})
                             st.session_state.user_grade = grade_in
@@ -118,20 +114,16 @@ if not st.session_state.logged_in:
 
 if st.session_state.page == "main_menu":
     st.header(f"🔥 {st.session_state.user_grade}コース")
-    st.write(f"（3月31日までこの学年を練習します）")
     st.subheader(f"連続学習: {st.session_state.streak}日目")
 
     if st.button("🚀 今日の練習を始める", use_container_width=True):
         all_csv_words = load_csv_data('words.csv')
         grade_words = [w for w in all_csv_words if w['grade'] == st.session_state.user_grade]
-        
         if not grade_words:
-            st.error(f"{st.session_state.user_grade} の単語データが words.csv にありません。")
+            st.error(f"{st.session_state.user_grade} のデータがありません。")
             st.stop()
-            
         unlearned = [w for w in grade_words if w['a'] not in st.session_state.learned_words]
         if len(unlearned) < 3: st.session_state.learned_words = []
-        
         st.session_state.session_words = random.sample(unlearned if len(unlearned)>=3 else grade_words, 3)
         st.session_state.success_counts = {w['a']: 0 for w in st.session_state.session_words}
         st.session_state.page = "training"
@@ -148,13 +140,23 @@ elif st.session_state.page == "training":
     if 'target_wa' not in st.session_state or st.session_state.target_wa not in [w['a'] for w in active]:
         target = random.choice(active)
         st.session_state.target_wq, st.session_state.target_wa = target['q'], target['a']
-    
+        st.session_state.show_hint = False # 新しい単語になったらヒントを隠す
+
     st.subheader(f"「{st.session_state.target_wq}」 ({st.session_state.success_counts[st.session_state.target_wa] + 1}/3回)")
+    
+    # --- ヘルプボタン ---
+    if st.button("❓ つづりが分からない (ヘルプ)"):
+        st.session_state.show_hint = True
+
+    if st.session_state.show_hint:
+        st.info(f"正解は: **{st.session_state.target_wa}**")
+
     u_in = st.text_input("スペル入力:", key=f"t_{st.session_state.input_key}").strip().lower()
     if st.button("判定"):
         if u_in == st.session_state.target_wa:
             st.session_state.success_counts[st.session_state.target_wa] += 1
             st.session_state.input_key += 1
+            st.session_state.show_hint = False # 次の入力のためにヒントを隠す
             del st.session_state.target_wa
             st.rerun()
 
@@ -185,6 +187,13 @@ elif st.session_state.page == "test":
 
     word = st.session_state.test_words[0]
     st.subheader(f"最終テスト: 「{word['q']}」")
+    
+    # 最終テストにもヘルプボタンをつける場合（甘やかしすぎなら削除OK）
+    if st.button("❓ ヒント"):
+        st.session_state.show_hint = True
+    if st.session_state.show_hint:
+        st.info(f"正解は: **{word['a']}**")
+
     t_in = st.text_input("答え:", key=f"v_{st.session_state.input_key}").strip().lower()
     if st.button("判定"):
         if t_in == word['a']:
@@ -192,6 +201,7 @@ elif st.session_state.page == "test":
                 st.session_state.learned_words.append(word['a'])
             st.session_state.test_words.pop(0)
             st.session_state.input_key += 1
+            st.session_state.show_hint = False
             st.rerun()
         else:
             st.error("間違い！特訓開始！")
