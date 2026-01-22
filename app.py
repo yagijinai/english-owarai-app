@@ -8,7 +8,7 @@ from firebase_admin import credentials, firestore
 # --- 1. ページ設定 ---
 st.set_page_config(layout="centered", page_title="英単語練習アプリ")
 
-# --- 2. Firebase連携 (GitHub Secretsを使用) ---
+# --- 2. Firebase連携 ---
 def init_firebase_live():
     if not firebase_admin._apps:
         try:
@@ -17,7 +17,7 @@ def init_firebase_live():
                 cred = credentials.Certificate(key_dict)
                 firebase_admin.initialize_app(cred)
             else:
-                st.error("GitHub Secretsに鍵が見つかりません。")
+                st.error("設定画面(Secrets)に鍵が入力されていません。")
         except Exception as e:
             st.error(f"接続失敗: {e}")
 
@@ -29,7 +29,7 @@ def init_session_state():
     defaults = {
         'logged_in': False, 'page': "login", 'last_user': None, 'current_user': "",
         'streak': 0, 'learned_words': [], 'session_words': [], 'success_counts': {},
-        'test_words': [], 'input_key': 0,
+        'test_words': [], 'input_key': 0, 'missed_word': None, 'missed_count': 0,
         'word_db': {
             "中学1年生": [
                 {"q": "りんご", "a": "apple"}, {"q": "本", "a": "book"}, {"q": "猫", "a": "cat"}, 
@@ -43,7 +43,7 @@ def init_session_state():
 init_session_state()
 
 if not st.session_state.logged_in:
-    st.title("🔐 クラウド英単語練習")
+    st.title("🔐 クラウド・ログイン")
     
     if st.session_state.last_user:
         st.subheader("同じIDでつづけますか？")
@@ -60,11 +60,11 @@ if not st.session_state.logged_in:
                     st.session_state.page = "main_menu"
                     st.rerun()
         with c2:
-            if st.button("いいえ（新しいID）", use_container_width=True):
+            if st.button("いいえ（別のIDを使う）", use_container_width=True):
                 st.session_state.last_user = None
                 st.rerun()
     else:
-        u_in = st.text_input("名前 (ID):").strip()
+        u_in = st.text_input("ID (名前):").strip()
         p_in = st.text_input("パスワード:", type="password").strip()
         if st.button("ログイン / 新規登録", use_container_width=True):
             if u_in and p_in:
@@ -101,6 +101,7 @@ if st.session_state.page == "main_menu":
         st.session_state.page = "training"
         st.rerun()
 
+# 練習モード
 elif st.session_state.page == "training":
     active = [w for w in st.session_state.session_words if st.session_state.success_counts[w['a']] < 3]
     if not active:
@@ -113,13 +114,30 @@ elif st.session_state.page == "training":
         st.session_state.target_wq = target['q']
         st.session_state.target_wa = target['a']
     
-    st.subheader(f"「{st.session_state.target_wq}」 ({st.session_state.success_counts[st.session_state.target_wa]}/3回)")
+    # 0/3 ではなく 1/3 から表示するように計算
+    count_display = st.session_state.success_counts[st.session_state.target_wa] + 1
+    st.subheader(f"「{st.session_state.target_wq}」 ({count_display}/3回)")
     u_in = st.text_input("スペル入力:", key=f"t_{st.session_state.input_key}").strip().lower()
     if st.button("判定"):
         if u_in == st.session_state.target_wa:
             st.session_state.success_counts[st.session_state.target_wa] += 1
             st.session_state.input_key += 1
             del st.session_state.target_wa
+            st.rerun()
+
+# ミス時の5回特訓モード
+elif st.session_state.page == "miss_drill":
+    st.warning(f"🚨 特訓モード！「{st.session_state.missed_word['q']}」を5回練習しよう")
+    st.subheader(f"「{st.session_state.missed_word['q']}」 ({st.session_state.missed_count + 1}/5回)")
+    d_in = st.text_input("スペル入力:", key=f"d_{st.session_state.input_key}").strip().lower()
+    if st.button("判定"):
+        if d_in == st.session_state.missed_word['a']:
+            st.session_state.missed_count += 1
+            st.session_state.input_key += 1
+            if st.session_state.missed_count >= 5:
+                st.session_state.page = "main_menu" # 5回終わったらメニューへ
+                st.session_state.missed_word = None
+                st.session_state.missed_count = 0
             st.rerun()
 
 elif st.session_state.page == "test":
@@ -132,11 +150,11 @@ elif st.session_state.page == "test":
         st.rerun()
 
     word = st.session_state.test_words[0]
-    st.subheader(f"テスト: 「{word['q']}」は？")
-    t_in = st.text_input("回答:", key=f"v_{st.session_state.input_key}").strip().lower()
+    st.subheader(f"最終テスト: 「{word['q']}」")
+    t_in = st.text_input("答え:", key=f"v_{st.session_state.input_key}").strip().lower()
     if st.button("判定"):
         if t_in == word['a']:
-            st.success("✨ 正解！")
+            st.success("正解！")
             time.sleep(0.5)
             if word['a'] not in st.session_state.learned_words:
                 st.session_state.learned_words.append(word['a'])
@@ -144,11 +162,16 @@ elif st.session_state.page == "test":
             st.session_state.input_key += 1
             st.rerun()
         else:
-            st.session_state.page = "main_menu"
+            # 間違えたら「5回練習モード」へ飛ばす
+            st.error(f"間違い！「{word['a']}」を5回特訓します。")
+            time.sleep(1.5)
+            st.session_state.missed_word = word
+            st.session_state.missed_count = 0
+            st.session_state.page = "miss_drill"
             st.rerun()
 
 elif st.session_state.page == "result":
-    st.header("🎉 保存完了！")
+    st.header("🎉 クラウドに保存しました！")
     st.balloons()
     if st.button("戻る"):
         st.session_state.page = "main_menu"
