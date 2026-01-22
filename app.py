@@ -50,10 +50,11 @@ def init_session_state():
         if key not in st.session_state: st.session_state[key] = value
 
 init_session_state()
+
 if not st.session_state.logged_in:
     st.title("🔐 クラウド・ログイン")
     
-    # 端末に記録がある場合、同じIDで始めるか聞く
+    # 前回のIDがある場合は二択画面から開始
     if st.session_state.last_user:
         st.subheader(f"「{st.session_state.last_user}」さんですね？")
         st.write("このIDでつづけますか？")
@@ -67,7 +68,6 @@ if not st.session_state.logged_in:
                     st.session_state.streak = data.get('streak', 0)
                     st.session_state.learned_words = data.get('learned', [])
                     st.session_state.user_grade = data.get('grade', "中1")
-                    st.session_state.grade_expiry = data.get('expiry', "")
                     st.session_state.logged_in = True
                     st.session_state.page = "main_menu"
                     st.rerun()
@@ -76,18 +76,13 @@ if not st.session_state.logged_in:
                 st.session_state.last_user = None
                 st.rerun()
     else:
-        # 新規または別IDログイン
-        u_in = st.text_input("名前 (ID) を入れてね:").strip()
+        u_in = st.text_input("名前 (ID):").strip()
         p_in = st.text_input("パスワード:", type="password").strip()
-        
-        # 学年を質問
         st.write("---")
-        grade_in = st.selectbox("あなたの学年を教えてね（3月31日まで固定されます）:", 
-                                ["中1", "中2", "中3", "高1", "高2", "高3"])
+        grade_in = st.selectbox("あなたの学年を選んでね:", ["中1", "中2", "中3", "高1", "高2", "高3"])
         
         if st.button("ログイン / 新規登録", use_container_width=True):
             if u_in and p_in:
-                # 3月31日までの期限を計算
                 now = datetime.now()
                 expiry_year = now.year if now.month <= 3 else now.year + 1
                 expiry_date = f"{expiry_year}-03-31"
@@ -99,18 +94,19 @@ if not st.session_state.logged_in:
                         data = doc.to_dict()
                         st.session_state.current_user = u_in
                         st.session_state.last_user = u_in
-                        # 既存ユーザーでも期限が切れていれば学年を更新
+                        # 期限切れチェック
                         if not data.get('expiry') or datetime.now().strftime("%Y-%m-%d") > data.get('expiry'):
                             doc_ref.update({"grade": grade_in, "expiry": expiry_date})
                             st.session_state.user_grade = grade_in
                         else:
                             st.session_state.user_grade = data.get('grade')
+                        st.session_state.streak = data.get('streak', 0)
+                        st.session_state.learned_words = data.get('learned', [])
                         st.session_state.logged_in = True
                         st.session_state.page = "main_menu"
                         st.rerun()
                     else: st.error("パスワードが違います")
                 else:
-                    # 完全新規登録
                     doc_ref.set({"password": p_in, "streak": 0, "learned": [], "grade": grade_in, "expiry": expiry_date})
                     st.session_state.current_user = u_in
                     st.session_state.last_user = u_in
@@ -119,18 +115,18 @@ if not st.session_state.logged_in:
                     st.session_state.page = "main_menu"
                     st.rerun()
     st.stop()
-    if st.session_state.page == "main_menu":
+
+if st.session_state.page == "main_menu":
     st.header(f"🔥 {st.session_state.user_grade}コース")
     st.write(f"（3月31日までこの学年を練習します）")
     st.subheader(f"連続学習: {st.session_state.streak}日目")
 
     if st.button("🚀 今日の練習を始める", use_container_width=True):
         all_csv_words = load_csv_data('words.csv')
-        # 学年が一致する単語だけを抽出
         grade_words = [w for w in all_csv_words if w['grade'] == st.session_state.user_grade]
         
         if not grade_words:
-            st.error(f"{st.session_state.user_grade} の単['words.csv']にデータがありません。")
+            st.error(f"{st.session_state.user_grade} の単語データが words.csv にありません。")
             st.stop()
             
         unlearned = [w for w in grade_words if w['a'] not in st.session_state.learned_words]
@@ -161,7 +157,8 @@ elif st.session_state.page == "training":
             st.session_state.input_key += 1
             del st.session_state.target_wa
             st.rerun()
-            elif st.session_state.page == "miss_drill":
+
+elif st.session_state.page == "miss_drill":
     st.warning(f"🚨 特訓！「{st.session_state.missed_word['q']}」を5回書こう")
     st.subheader(f"({st.session_state.missed_count + 1}/5回)")
     d_in = st.text_input("スペル:", key=f"d_{st.session_state.input_key}").strip().lower()
