@@ -7,10 +7,10 @@ from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# --- 1. ページ設定（スマホ最適化） ---
+# --- 1. ページ設定（スマホで押しやすいサイズに） ---
 st.set_page_config(layout="centered", page_title="英単語マスター", page_icon="📝")
 
-# --- 2. データ読み込み ---
+# --- 2. データ読み込み関数 ---
 def load_csv_data(filename):
     data = []
     try:
@@ -50,7 +50,7 @@ def init_session():
 
 init_session()
 
-# --- 重要：URLからの自動ログイン判定 ---
+# --- 重要：URLのIDから自動ログイン判定 ---
 if not st.session_state.logged_in and "id" in st.query_params:
     uid = st.query_params["id"]
     doc = st.session_state.db.collection("users").document(uid).get()
@@ -91,17 +91,17 @@ if not st.session_state.logged_in:
                     st.rerun()
 
     with tab2:
-        st.info("💡 **Pixelで自動ログインする方法**")
-        st.write("1. ログイン後、URLに自分のIDが入った状態にします。")
+        st.info("💡 **Pixelで『爆速スタート』する方法**")
+        st.write("1. ログイン後、URLに自分のIDが入った状態（メニュー画面）にします。")
         st.write("2. Chromeの右上『︙』をタップ。")
-        st.write("3. 『ホーム画面に追加』を選択。")
-        st.write("4. 以降、そのアイコンから開くだけで自動ログインされます。")
+        st.write("3. **『ホーム画面に追加』**を選択。")
+        st.write("4. 以降、そのアイコンを叩くだけで、名前もパスワードも入れずに即練習できます！")
     st.stop()
 
 if st.session_state.page == "main_menu":
-    st.title(f"🔥 {st.session_state.user_grade}")
+    st.title(f"🔥 {st.session_state.user_grade}コース")
     st.metric(label="連続学習", value=f"{st.session_state.streak} 日")
-    st.write(f"👤 ユーザー: {st.session_state.current_user}")
+    st.write(f"👤 ログイン: {st.session_state.current_user}")
     
     st.divider()
 
@@ -109,7 +109,7 @@ if st.session_state.page == "main_menu":
         all_words = load_csv_data('words.csv')
         grade_words = [w for w in all_words if w['grade'] == st.session_state.user_grade]
         if not grade_words:
-            st.error("単語データが見つかりません。")
+            st.error("単語データがありません。")
             st.stop()
             
         unlearned = [w for w in grade_words if w['a'] not in st.session_state.learned_words]
@@ -120,13 +120,13 @@ if st.session_state.page == "main_menu":
         st.session_state.page = "training"
         st.rerun()
 
-    if st.button("別のIDで入る (ログアウト)", variant="secondary"):
+    if st.button("別のIDで入る"):
         st.query_params.clear()
-        st.session_state.logged_in = False
+        st.session_state.clear()
         st.rerun()
 
 elif st.session_state.page == "training":
-    active = [w for w in st.session_state.session_words if st.session_state.success_counts[w['a']] < 3]
+    active = [w for w in st.session_state.session_words if st.session_state.success_counts.get(w['a'], 0) < 3]
     if not active:
         st.session_state.test_words = list(st.session_state.session_words)
         random.shuffle(st.session_state.test_words)
@@ -140,24 +140,21 @@ elif st.session_state.page == "training":
 
     st.subheader(f"「{st.session_state.target_wq}」 ({st.session_state.success_counts[st.session_state.target_wa] + 1}/3)")
     
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if st.button("❓ ヒント", use_container_width=True): st.session_state.show_hint = True
-    with col2:
-        if st.button("判定", type="primary", use_container_width=True):
-            # 判定ロジックは下のtext_inputの後に
-            pass 
-
+    if st.button("❓ つづりヘルプ", use_container_width=True):
+        st.session_state.show_hint = True
     if st.session_state.show_hint:
         st.info(f"正解: **{st.session_state.target_wa}**")
 
     u_in = st.text_input("スペル入力:", key=f"t_{st.session_state.input_key}").strip().lower()
-    if u_in == st.session_state.target_wa:
-        st.session_state.success_counts[st.session_state.target_wa] += 1
-        st.session_state.input_key += 1
-        st.session_state.show_hint = False
-        del st.session_state.target_wa
-        st.rerun()
+    if st.button("判定", type="primary", use_container_width=True):
+        if u_in == st.session_state.target_wa:
+            st.session_state.success_counts[st.session_state.target_wa] += 1
+            st.session_state.input_key += 1
+            st.session_state.show_hint = False
+            del st.session_state.target_wa
+            st.rerun()
+        else:
+            st.error("おしい！")
 
 elif st.session_state.page == "miss_drill":
     st.warning(f"🚨 特訓！「{st.session_state.missed_word['q']}」")
