@@ -2,13 +2,30 @@ import streamlit as st
 import random
 import time
 import json
+import csv
 import firebase_admin
 from firebase_admin import credentials, firestore
 
 # --- 1. ページ設定 ---
 st.set_page_config(layout="centered", page_title="英単語練習アプリ")
 
-# --- 2. Firebase連携 ---
+# --- 2. CSV読み込み関数 ---
+def load_csv_data(filename):
+    data = []
+    try:
+        with open(filename, 'r', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if filename == 'words.csv' and len(row) >= 3:
+                    # 学年, 日本語, 英語
+                    data.append({"grade": row[0].strip(), "q": row[1].strip(), "a": row[2].strip().lower()})
+                elif filename == 'neta.csv' and row:
+                    data.append(row[0])
+    except Exception as e:
+        st.error(f"ファイル {filename} の読み込みに失敗しました。")
+    return data
+
+# --- 3. Firebase連携 ---
 def init_firebase_live():
     if not firebase_admin._apps:
         try:
@@ -16,11 +33,8 @@ def init_firebase_live():
                 key_dict = json.loads(st.secrets["FIREBASE_SECRET"])
                 cred = credentials.Certificate(key_dict)
                 firebase_admin.initialize_app(cred)
-            else:
-                st.error("設定画面(Secrets)に鍵が入力されていません。")
         except Exception as e:
             st.error(f"接続失敗: {e}")
-
     if 'db' not in st.session_state:
         st.session_state.db = firestore.client()
 
@@ -30,12 +44,7 @@ def init_session_state():
         'logged_in': False, 'page': "login", 'last_user': None, 'current_user': "",
         'streak': 0, 'learned_words': [], 'session_words': [], 'success_counts': {},
         'test_words': [], 'input_key': 0, 'missed_word': None, 'missed_count': 0,
-        'word_db': {
-            "中学1年生": [
-                {"q": "りんご", "a": "apple"}, {"q": "本", "a": "book"}, {"q": "猫", "a": "cat"}, 
-                {"q": "犬", "a": "dog"}, {"q": "ペン", "a": "pen"}, {"q": "机", "a": "desk"}
-            ]
-        }
+        'current_episode': "", 'user_grade': "中1" # デフォルトの学年
     }
     for key, value in defaults.items():
         if key not in st.session_state: st.session_state[key] = value
@@ -56,6 +65,7 @@ if not st.session_state.logged_in:
                     st.session_state.current_user = st.session_state.last_user
                     st.session_state.streak = data.get('streak', 0)
                     st.session_state.learned_words = data.get('learned', [])
+                    st.session_state.user_grade = data.get('grade', "中1") # 保存された学年を読み込む
                     st.session_state.logged_in = True
                     st.session_state.page = "main_menu"
                     st.rerun()
@@ -66,6 +76,9 @@ if not st.session_state.logged_in:
     else:
         u_in = st.text_input("ID (名前):").strip()
         p_in = st.text_input("パスワード:", type="password").strip()
+        # 新規登録時に学年を選べるようにする
+        grade_in = st.selectbox("自分の学年を選んでね:", ["中1", "中2", "中3", "高1", "高2", "高3"])
+        
         if st.button("ログイン / 新規登録", use_container_width=True):
             if u_in and p_in:
                 doc_ref = st.session_state.db.collection("users").document(u_in)
@@ -77,26 +90,43 @@ if not st.session_state.logged_in:
                         st.session_state.last_user = u_in
                         st.session_state.streak = data.get('streak', 0)
                         st.session_state.learned_words = data.get('learned', [])
+                        st.session_state.user_grade = data.get('grade', grade_in)
                         st.session_state.logged_in = True
                         st.session_state.page = "main_menu"
                         st.rerun()
                     else: st.error("パスワードが違います")
                 else:
-                    doc_ref.set({"password": p_in, "streak": 0, "learned": []})
+                    doc_ref.set({"password": p_in, "streak": 0, "learned": [], "grade": grade_in})
                     st.session_state.current_user = u_in
                     st.session_state.last_user = u_in
+                    st.session_state.user_grade = grade_in
                     st.session_state.logged_in = True
                     st.session_state.page = "main_menu"
                     st.rerun()
     st.stop()
 
 if st.session_state.page == "main_menu":
-    st.header(f"🔥 連続 {st.session_state.streak}日目")
+    st.header(f"🔥 {st.session_state.user_grade}コース：連続 {st.session_state.streak}日目")
+    # 学年変更ボタンも用意
+    new_grade = st.selectbox("学年を変更する:", ["中1", "中2", "中3", "高1", "高2", "高3"], index=["中1", "中2", "中3", "高1", "高2", "高3"].index(st.session_state.user_grade))
+    if new_grade != st.session_state.user_grade:
+        st.session_state.user_grade = new_grade
+        st.session_state.db.collection("users").document(st.session_state.current_user).update({"grade": new_grade})
+        st.success(f"{new_grade}に設定しました！")
+
     if st.button("🚀 学習スタート", use_container_width=True):
-        all_w = st.session_state.word_db["中学1年生"]
-        unlearned = [w for w in all_w if w['a'] not in st.session_state.learned_words]
+        all_csv_words = load_csv_data('words.csv')
+        # ★ ここで「ユーザーの学年」と一致する単語だけを抜き出す
+        grade_words = [w for w in all_csv_words if w['grade'] == st.session_state.user_grade]
+        
+        if not grade_words:
+            st.error(f"{st.session_state.user_grade} の単語が words.csv に見つかりません。")
+            st.stop()
+            
+        unlearned = [w for w in grade_words if w['a'] not in st.session_state.learned_words]
         if len(unlearned) < 3: st.session_state.learned_words = []
-        st.session_state.session_words = random.sample(unlearned if len(unlearned)>=3 else all_w, 3)
+        
+        st.session_state.session_words = random.sample(unlearned if len(unlearned)>=3 else grade_words, 3)
         st.session_state.success_counts = {w['a']: 0 for w in st.session_state.session_words}
         st.session_state.page = "training"
         st.rerun()
@@ -105,7 +135,7 @@ elif st.session_state.page == "training":
     active = [w for w in st.session_state.session_words if st.session_state.success_counts[w['a']] < 3]
     if not active:
         st.session_state.test_words = list(st.session_state.session_words)
-        random.shuffle(st.session_state.test_words) # テストはランダムな順序で
+        random.shuffle(st.session_state.test_words)
         st.session_state.page = "test"
         st.rerun()
 
@@ -124,7 +154,6 @@ elif st.session_state.page == "training":
             del st.session_state.target_wa
             st.rerun()
 
-# ミス時の特訓モード
 elif st.session_state.page == "miss_drill":
     st.warning(f"🚨 特訓中！「{st.session_state.missed_word['q']}」を5回書こう")
     st.subheader(f"「{st.session_state.missed_word['q']}」 ({st.session_state.missed_count + 1}/5回)")
@@ -134,7 +163,6 @@ elif st.session_state.page == "miss_drill":
             st.session_state.missed_count += 1
             st.session_state.input_key += 1
             if st.session_state.missed_count >= 5:
-                # 特訓終了！テストリストをシャッフルしてテスト画面へ戻る
                 random.shuffle(st.session_state.test_words)
                 st.session_state.page = "test"
                 st.session_state.missed_word = None
@@ -142,43 +170,41 @@ elif st.session_state.page == "miss_drill":
             st.rerun()
 
 elif st.session_state.page == "test":
-    # 合格していない単語がなくなれば終了
     if not st.session_state.test_words:
         st.session_state.streak += 1
         st.session_state.db.collection("users").document(st.session_state.current_user).update({
-            "streak": st.session_state.streak, "learned": st.session_state.learned_words
+            "streak": st.session_state.streak, "learned": st.session_state.learned_words, "grade": st.session_state.user_grade
         })
+        episodes = load_csv_data('neta.csv')
+        st.session_state.current_episode = random.choice(episodes) if episodes else "ネタがありません。"
         st.session_state.page = "result"
         st.rerun()
 
-    # テスト単語リストの先頭から出題
     word = st.session_state.test_words[0]
     st.subheader(f"最終テスト: 「{word['q']}」")
     t_in = st.text_input("答え:", key=f"v_{st.session_state.input_key}").strip().lower()
-    
     if st.button("判定"):
         if t_in == word['a']:
-            st.success("正解！合格です。")
+            st.success("正解！")
             time.sleep(0.5)
             if word['a'] not in st.session_state.learned_words:
                 st.session_state.learned_words.append(word['a'])
-            # 合格したのでリストから消す
             st.session_state.test_words.pop(0)
             st.session_state.input_key += 1
             st.rerun()
         else:
             st.error(f"間違い！「{word['a']}」を5回特訓します。")
             time.sleep(1.5)
-            # 間違えた単語を特訓へ
             st.session_state.missed_word = word
             st.session_state.missed_count = 0
             st.session_state.page = "miss_drill"
-            # テストリストの中身は消さずに残しておく（特訓後に再挑戦するため）
             st.rerun()
 
 elif st.session_state.page == "result":
-    st.header("🎉 全問合格！保存しました")
+    st.header("🎉 全問合格！")
     st.balloons()
+    st.success("🎁 ご褒美：お笑い芸人マル秘エピソード")
+    st.info(st.session_state.current_episode)
     if st.button("メニューへ戻る"):
         st.session_state.page = "main_menu"
         st.rerun()
