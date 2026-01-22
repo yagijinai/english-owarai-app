@@ -101,11 +101,11 @@ if st.session_state.page == "main_menu":
         st.session_state.page = "training"
         st.rerun()
 
-# 練習モード
 elif st.session_state.page == "training":
     active = [w for w in st.session_state.session_words if st.session_state.success_counts[w['a']] < 3]
     if not active:
         st.session_state.test_words = list(st.session_state.session_words)
+        random.shuffle(st.session_state.test_words) # テストはランダムな順序で
         st.session_state.page = "test"
         st.rerun()
 
@@ -114,7 +114,6 @@ elif st.session_state.page == "training":
         st.session_state.target_wq = target['q']
         st.session_state.target_wa = target['a']
     
-    # 0/3 ではなく 1/3 から表示するように計算
     count_display = st.session_state.success_counts[st.session_state.target_wa] + 1
     st.subheader(f"「{st.session_state.target_wq}」 ({count_display}/3回)")
     u_in = st.text_input("スペル入力:", key=f"t_{st.session_state.input_key}").strip().lower()
@@ -125,22 +124,25 @@ elif st.session_state.page == "training":
             del st.session_state.target_wa
             st.rerun()
 
-# ミス時の5回特訓モード
+# ミス時の特訓モード
 elif st.session_state.page == "miss_drill":
-    st.warning(f"🚨 特訓モード！「{st.session_state.missed_word['q']}」を5回練習しよう")
+    st.warning(f"🚨 特訓中！「{st.session_state.missed_word['q']}」を5回書こう")
     st.subheader(f"「{st.session_state.missed_word['q']}」 ({st.session_state.missed_count + 1}/5回)")
-    d_in = st.text_input("スペル入力:", key=f"d_{st.session_state.input_key}").strip().lower()
+    d_in = st.text_input("スペル:", key=f"d_{st.session_state.input_key}").strip().lower()
     if st.button("判定"):
         if d_in == st.session_state.missed_word['a']:
             st.session_state.missed_count += 1
             st.session_state.input_key += 1
             if st.session_state.missed_count >= 5:
-                st.session_state.page = "main_menu" # 5回終わったらメニューへ
+                # 特訓終了！テストリストをシャッフルしてテスト画面へ戻る
+                random.shuffle(st.session_state.test_words)
+                st.session_state.page = "test"
                 st.session_state.missed_word = None
                 st.session_state.missed_count = 0
             st.rerun()
 
 elif st.session_state.page == "test":
+    # 合格していない単語がなくなれば終了
     if not st.session_state.test_words:
         st.session_state.streak += 1
         st.session_state.db.collection("users").document(st.session_state.current_user).update({
@@ -149,30 +151,34 @@ elif st.session_state.page == "test":
         st.session_state.page = "result"
         st.rerun()
 
+    # テスト単語リストの先頭から出題
     word = st.session_state.test_words[0]
     st.subheader(f"最終テスト: 「{word['q']}」")
     t_in = st.text_input("答え:", key=f"v_{st.session_state.input_key}").strip().lower()
+    
     if st.button("判定"):
         if t_in == word['a']:
-            st.success("正解！")
+            st.success("正解！合格です。")
             time.sleep(0.5)
             if word['a'] not in st.session_state.learned_words:
                 st.session_state.learned_words.append(word['a'])
+            # 合格したのでリストから消す
             st.session_state.test_words.pop(0)
             st.session_state.input_key += 1
             st.rerun()
         else:
-            # 間違えたら「5回練習モード」へ飛ばす
             st.error(f"間違い！「{word['a']}」を5回特訓します。")
             time.sleep(1.5)
+            # 間違えた単語を特訓へ
             st.session_state.missed_word = word
             st.session_state.missed_count = 0
             st.session_state.page = "miss_drill"
+            # テストリストの中身は消さずに残しておく（特訓後に再挑戦するため）
             st.rerun()
 
 elif st.session_state.page == "result":
-    st.header("🎉 クラウドに保存しました！")
+    st.header("🎉 全問合格！保存しました")
     st.balloons()
-    if st.button("戻る"):
+    if st.button("メニューへ戻る"):
         st.session_state.page = "main_menu"
         st.rerun()
