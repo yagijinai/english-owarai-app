@@ -53,35 +53,40 @@ init_session()
 if not st.session_state.logged_in:
     st.title("🔐 ログイン")
     
-    # URLに保存されたID（Pixelのホーム画面ショートカット用）を取得
+    # URLから保存されたIDを取得
     url_id = st.query_params.get("id", "")
     
-    if url_id and "retry_login" not in st.session_state:
-        st.subheader(f"「{url_id}」さんですね？")
-        c1, c2 = st.columns(2)
-        with c1:
-            if st.button("✅ はい（パスワードなしで開始）", use_container_width=True):
-                doc = st.session_state.db.collection("users").document(url_id).get()
-                if doc.exists:
-                    data = doc.to_dict()
-                    st.session_state.current_user = url_id
-                    st.session_state.streak = data.get('streak', 0)
-                    st.session_state.learned_words = data.get('learned', [])
-                    st.session_state.user_grade = data.get('grade', "中1")
-                    st.session_state.logged_in = True
-                    st.session_state.page = "main_menu"
-                    st.rerun()
-        with c2:
-            if st.button("👤 他のIDでログイン", use_container_width=True):
-                st.session_state.retry_login = True
+    # 1. 前回のIDがある場合、ボタン2つだけを表示
+    if url_id and "force_manual" not in st.session_state:
+        st.write(" ")
+        if st.button(f"🚀 {url_id} で始める", use_container_width=True, type="primary"):
+            doc = st.session_state.db.collection("users").document(url_id).get()
+            if doc.exists:
+                data = doc.to_dict()
+                st.session_state.current_user = url_id
+                st.session_state.streak = data.get('streak', 0)
+                st.session_state.learned_words = data.get('learned', [])
+                st.session_state.user_grade = data.get('grade', "中1")
+                st.session_state.logged_in = True
+                st.session_state.page = "main_menu"
                 st.rerun()
-    else:
-        # 初回または「他のID」を選んだ時
-        u_id = st.text_input("名前 (ID):").strip()
-        u_pw = st.text_input("パスワード:", type="password").strip()
-        u_grade = st.selectbox("学年:", ["中1", "中2", "中3", "高1", "高2", "高3"])
+            else:
+                st.error("データが見つかりません。新しくログインしてください。")
+                st.session_state.force_manual = True
+                st.rerun()
         
-        if st.button("ログイン / 新規登録", use_container_width=True):
+        st.write(" ")
+        if st.button("👤 他のIDでログインする", use_container_width=True):
+            st.session_state.force_manual = True
+            st.rerun()
+            
+    # 2. 初回、または「他のID」を選んだ場合の入力画面
+    else:
+        u_id = st.text_input("なまえ (ID):").strip()
+        u_pw = st.text_input("パスワード:", type="password").strip()
+        u_grade = st.selectbox("がくねん:", ["中1", "中2", "中3", "高1", "高2", "高3"])
+        
+        if st.button("ログインして開始", use_container_width=True, type="primary"):
             if u_id and u_pw:
                 doc_ref = st.session_state.db.collection("users").document(u_id)
                 doc = doc_ref.get()
@@ -104,8 +109,8 @@ if not st.session_state.logged_in:
                     st.session_state.current_user = u_id
                     st.session_state.logged_in = True
                     st.session_state.page = "main_menu"
-                    st.query_params["id"] = u_id # URLにIDを保存
-                    if "retry_login" in st.session_state: del st.session_state.retry_login
+                    st.query_params["id"] = u_id
+                    if "force_manual" in st.session_state: del st.session_state.force_manual
                     st.rerun()
     st.stop()
 
@@ -122,7 +127,6 @@ if st.session_state.page == "main_menu":
         unlearned = [w for w in grade_words if w['a'] not in st.session_state.learned_words]
         if len(unlearned) < 3: st.session_state.learned_words = []
         
-        # 今日の3問
         st.session_state.session_words = random.sample(unlearned if len(unlearned)>=3 else grade_words, 3)
         st.session_state.success_counts = {w['a']: 0 for w in st.session_state.session_words}
         st.session_state.page = "training"
@@ -131,17 +135,14 @@ if st.session_state.page == "main_menu":
 elif st.session_state.page == "training":
     active = [w for w in st.session_state.session_words if st.session_state.success_counts.get(w['a'], 0) < 3]
     if not active:
-        # --- 復習テストの作成（5問構成） ---
+        # --- 復習テスト5問（今日3問＋過去2問） ---
         today_list = list(st.session_state.session_words)
         all_csv = load_csv_data('words.csv')
-        # 過去に覚えた単語（今日の3問以外）
         past_learned = [w for w in all_csv if w['a'] in st.session_state.learned_words and w['a'] not in [tw['a'] for tw in today_list]]
         
         if not past_learned:
-            # 初日は今日の3問のみ
             st.session_state.test_words = today_list
         else:
-            # 2日目以降：今日3問 + 過去から2問
             extra = random.sample(past_learned, min(2, len(past_learned)))
             st.session_state.test_words = today_list + extra
             
