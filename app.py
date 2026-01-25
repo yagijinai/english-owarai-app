@@ -25,7 +25,7 @@ def load_csv_data(filename):
     except Exception: pass
     return data
 
-# --- 3. Firebase初期化 & ルール保存/読込 ---
+# --- 3. Firebase初期化 & ルール永続化 ---
 def init_firebase_and_rules():
     if not firebase_admin._apps:
         try:
@@ -39,17 +39,16 @@ def init_firebase_and_rules():
     if 'db' not in st.session_state:
         st.session_state.db = db
 
-    # 【重要】お父様の指示をFirebaseに永続保存する
+    # Firebaseにルールを保存（AIが忘れないための絶対ルール）
     rules_ref = db.collection("config").document("rules")
     my_rules = {
-        "rule1": "コードを分ける時は、意味のあるパートごとに分ける。",
-        "rule2": "ログイン画面は『前回のIDで始める』か『他ID』の二択ボタンから始める。",
-        "rule3": "修正時は前のコードを全部消すので、常にフルセットでコードを書く。",
-        "rule4": "復習テスト終了後、必ず芸人の名前とエピソードを表示する（result画面）。",
-        "rule5": "復習テストは5問（今日3問＋過去ランダム2問）。初日は3問。",
-        "rule6": "各問題に『つづりヘルプ（ヒント）』ボタンを設置する。"
+        "rule1": "コードは意味のあるパートごとに分ける。",
+        "rule2": "ログインは『前回IDで始める』か『他ID』の二択ボタン。パスワード不要。",
+        "rule3": "修正時は常にフルセットでコードを書く。",
+        "rule4": "テスト終了後、必ず芸人名とネタを表示する。",
+        "rule5": "復習テストは5問。初日は3問。",
+        "rule6": "特訓時は『1/5』のように回数を表示する。" # 今回の追加指示
     }
-    # 初回または更新時にFirebaseへ書き込み
     rules_ref.set(my_rules, merge=True)
     st.session_state.app_rules = rules_ref.get().to_dict()
 
@@ -69,10 +68,8 @@ init_session()
 if not st.session_state.logged_in:
     st.title("🔐 ログイン")
     
-    # URLから保存されたIDを取得
     url_id = st.query_params.get("id", "")
     
-    # 指示：前回のIDがある場合、ボタン2つだけを表示（パスワード入力なし）
     if url_id and "force_manual" not in st.session_state:
         st.write(f"おかえりなさい！")
         if st.button(f"🚀 {url_id} で始める", use_container_width=True, type="primary"):
@@ -87,16 +84,15 @@ if not st.session_state.logged_in:
                 st.session_state.page = "main_menu"
                 st.rerun()
             else:
-                st.error("データが見つかりませんでした。")
+                st.error("データがありません。")
                 st.session_state.force_manual = True
                 st.rerun()
         
-        if st.button("👤 他のIDでログインする", use_container_width=True):
+        if st.button("👤 他のIDでログイン", use_container_width=True):
             st.session_state.force_manual = True
             st.rerun()
             
     else:
-        # 手動ログイン画面
         u_id = st.text_input("なまえ (ID):").strip()
         u_pw = st.text_input("パスワード:", type="password").strip()
         u_grade = st.selectbox("がくねん:", ["中1", "中2", "中3", "高1", "高2", "高3"])
@@ -150,13 +146,12 @@ if st.session_state.page == "main_menu":
 elif st.session_state.page == "training":
     active = [w for w in st.session_state.session_words if st.session_state.success_counts.get(w['a'], 0) < 3]
     if not active:
-        # --- 復習テスト作成：今日3問 + 過去ランダム2問 ---
         today_list = list(st.session_state.session_words)
         all_csv = load_csv_data('words.csv')
         past_learned = [w for w in all_csv if w['a'] in st.session_state.learned_words and w['a'] not in [tw['a'] for tw in today_list]]
         
         if not past_learned:
-            st.session_state.test_words = today_list # 初日
+            st.session_state.test_words = today_list
         else:
             extra = random.sample(past_learned, min(2, len(past_learned)))
             st.session_state.test_words = today_list + extra
@@ -186,13 +181,12 @@ elif st.session_state.page == "test":
         st.session_state.db.collection("users").document(st.session_state.current_user).update({
             "streak": st.session_state.streak, "learned": st.session_state.learned_words
         })
-        # 芸人ネタをFirebaseからではなくCSVから取得して表示
         n_data = load_csv_data('neta.csv')
         st.session_state.current_episode = random.choice(n_data) if n_data else {"name": "合格", "story": "完璧！"}
         st.session_state.page = "result"; st.rerun()
 
     word = st.session_state.test_words[0]
-    st.subheader(f"テスト（全{len(st.session_state.test_words)}問）: 「{word['q']}」")
+    st.subheader(f"最終テスト（全{len(st.session_state.test_words)}問）: 「{word['q']}」")
     if st.button("❓ つづりヘルプ"): st.session_state.show_hint = True
     if st.session_state.show_hint: st.info(f"正解: **{word['a']}**")
 
@@ -209,13 +203,21 @@ elif st.session_state.page == "test":
             st.session_state.page = "miss_drill"; st.rerun()
 
 elif st.session_state.page == "miss_drill":
-    st.warning(f"🚨 特訓！「{st.session_state.missed_word['q']}」")
-    d_in = st.text_input("スペル:", key=f"d_{st.session_state.input_key}").strip().lower()
-    if d_in == st.session_state.missed_word['a']:
-        st.session_state.missed_count += 1; st.session_state.input_key += 1
-        if st.session_state.missed_count >= 5:
-            st.session_state.page = "test"; st.session_state.missed_word = None; st.session_state.missed_count = 0
-        st.rerun()
+    # --- 指示：1/5 などの回数表示 ---
+    count_text = f"{st.session_state.missed_count + 1}/5"
+    st.warning(f"🚨 特訓（{count_text}）: 「{st.session_state.missed_word['q']}」")
+    
+    d_in = st.text_input("正解を書いてね:", key=f"d_{st.session_state.input_key}").strip().lower()
+    if st.button("次へ", use_container_width=True):
+        if d_in == st.session_state.missed_word['a']:
+            st.session_state.missed_count += 1
+            st.session_state.input_key += 1
+            if st.session_state.missed_count >= 5:
+                st.session_state.page = "test"
+                st.session_state.missed_word = None; st.session_state.missed_count = 0
+            st.rerun()
+        else:
+            st.error("スペルが違うよ！よく見て書き直してね。")
 
 elif st.session_state.page == "result":
     st.balloons(); st.title("🎉 合格！")
@@ -223,11 +225,5 @@ elif st.session_state.page == "result":
     st.subheader(f"🎤 {ep['name']}")
     st.info(ep['story'])
     
-    # 最後に、Firebaseから読み込んだ「絶対ルール」をデバッグ表示（開発時確認用）
-    with st.expander("📌 このアプリの絶対ルール（Firebase保存済み）"):
-        for k, v in st.session_state.app_rules.items():
-            st.write(f"・{v}")
-            
     if st.button("メニューへ戻る", use_container_width=True):
         st.session_state.page = "main_menu"; st.rerun()
-
