@@ -8,7 +8,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 # --- 1. ページ設定 ---
-st.set_page_config(layout="centered", page_title="英単語マスター", page_icon="📝")
+st.set_page_config(layout="centered", page_title="英単語練習アプリ", page_icon="📝")
 
 # --- 2. CSV読み込み ---
 def load_csv_data(filename):
@@ -39,7 +39,7 @@ def init_firebase_and_rules():
     if 'db' not in st.session_state:
         st.session_state.db = db
 
-    # Firebaseにルールを保存（AIが忘れないための絶対ルール）
+    # 指示の永続保存
     rules_ref = db.collection("config").document("rules")
     my_rules = {
         "rule1": "コードは意味のあるパートごとに分ける。",
@@ -47,7 +47,8 @@ def init_firebase_and_rules():
         "rule3": "修正時は常にフルセットでコードを書く。",
         "rule4": "テスト終了後、必ず芸人名とネタを表示する。",
         "rule5": "復習テストは5問。初日は3問。",
-        "rule6": "特訓時は『1/5』のように回数を表示する。" # 今回の追加指示
+        "rule6": "特訓時は『1/5』のように回数を表示する。",
+        "rule7": "新端末への引継ぎを考慮し、Local StorageとURLパラメータを併用する。"
     }
     rules_ref.set(my_rules, merge=True)
     st.session_state.app_rules = rules_ref.get().to_dict()
@@ -68,11 +69,13 @@ init_session()
 if not st.session_state.logged_in:
     st.title("🔐 ログイン")
     
+    # URLパラメータからIDを取得（これが最も確実な引継ぎ手段）
     url_id = st.query_params.get("id", "")
     
+    # 二択画面：URLにIDが含まれている場合はボタンを表示
     if url_id and "force_manual" not in st.session_state:
-        st.write(f"おかえりなさい！")
-        if st.button(f"🚀 {url_id} で始める", use_container_width=True, type="primary"):
+        st.write(f"新しいスマホでも、このまま始められるよ！")
+        if st.button(f"🚀 {url_id} さんとして続ける", use_container_width=True, type="primary"):
             doc = st.session_state.db.collection("users").document(url_id).get()
             if doc.exists:
                 data = doc.to_dict()
@@ -84,15 +87,16 @@ if not st.session_state.logged_in:
                 st.session_state.page = "main_menu"
                 st.rerun()
             else:
-                st.error("データがありません。")
+                st.error("データが見つかりませんでした。再度ログインしてください。")
                 st.session_state.force_manual = True
                 st.rerun()
         
-        if st.button("👤 他のIDでログイン", use_container_width=True):
+        if st.button("👤 別のIDでログインする", use_container_width=True):
             st.session_state.force_manual = True
             st.rerun()
             
     else:
+        # 手動ログイン（新しいスマホの初回のみ必要）
         u_id = st.text_input("なまえ (ID):").strip()
         u_pw = st.text_input("パスワード:", type="password").strip()
         u_grade = st.selectbox("がくねん:", ["中1", "中2", "中3", "高1", "高2", "高3"])
@@ -104,11 +108,10 @@ if not st.session_state.logged_in:
                 valid = False
                 if doc.exists:
                     if doc.to_dict()['password'] == u_pw:
-                        data = doc.to_dict()
+                        data = doc.to_dict(); valid = True
                         st.session_state.user_grade = data.get('grade', u_grade)
                         st.session_state.streak = data.get('streak', 0)
                         st.session_state.learned_words = data.get('learned', [])
-                        valid = True
                     else: st.error("パスワードが違います")
                 else:
                     now = datetime.now()
@@ -120,6 +123,7 @@ if not st.session_state.logged_in:
                     st.session_state.current_user = u_id
                     st.session_state.logged_in = True
                     st.session_state.page = "main_menu"
+                    # URLにIDをセット（これを「ホーム画面に追加」することで次から自動化）
                     st.query_params["id"] = u_id
                     if "force_manual" in st.session_state: del st.session_state.force_manual
                     st.rerun()
@@ -134,7 +138,7 @@ if st.session_state.page == "main_menu":
         grade_words = [w for w in all_words if w['grade'] == st.session_state.user_grade]
         if not grade_words:
             st.error("単語データがありません。"); st.stop()
-            
+        
         unlearned = [w for w in grade_words if w['a'] not in st.session_state.learned_words]
         if len(unlearned) < 3: st.session_state.learned_words = []
         
@@ -186,7 +190,7 @@ elif st.session_state.page == "test":
         st.session_state.page = "result"; st.rerun()
 
     word = st.session_state.test_words[0]
-    st.subheader(f"最終テスト（全{len(st.session_state.test_words)}問）: 「{word['q']}」")
+    st.subheader(f"テスト: 「{word['q']}」")
     if st.button("❓ つづりヘルプ"): st.session_state.show_hint = True
     if st.session_state.show_hint: st.info(f"正解: **{word['a']}**")
 
@@ -203,27 +207,20 @@ elif st.session_state.page == "test":
             st.session_state.page = "miss_drill"; st.rerun()
 
 elif st.session_state.page == "miss_drill":
-    # --- 指示：1/5 などの回数表示 ---
     count_text = f"{st.session_state.missed_count + 1}/5"
     st.warning(f"🚨 特訓（{count_text}）: 「{st.session_state.missed_word['q']}」")
-    
     d_in = st.text_input("正解を書いてね:", key=f"d_{st.session_state.input_key}").strip().lower()
     if st.button("次へ", use_container_width=True):
         if d_in == st.session_state.missed_word['a']:
-            st.session_state.missed_count += 1
-            st.session_state.input_key += 1
+            st.session_state.missed_count += 1; st.session_state.input_key += 1
             if st.session_state.missed_count >= 5:
-                st.session_state.page = "test"
-                st.session_state.missed_word = None; st.session_state.missed_count = 0
+                st.session_state.page = "test"; st.session_state.missed_word = None; st.session_state.missed_count = 0
             st.rerun()
-        else:
-            st.error("スペルが違うよ！よく見て書き直してね。")
+        else: st.error("スペルが違うよ！")
 
 elif st.session_state.page == "result":
     st.balloons(); st.title("🎉 合格！")
     ep = st.session_state.current_episode
-    st.subheader(f"🎤 {ep['name']}")
-    st.info(ep['story'])
-    
+    st.subheader(f"🎤 {ep['name']}"); st.info(ep['story'])
     if st.button("メニューへ戻る", use_container_width=True):
         st.session_state.page = "main_menu"; st.rerun()
