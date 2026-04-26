@@ -10,7 +10,7 @@ from firebase_admin import credentials, firestore
 # --- ページ設定 ---
 st.set_page_config(layout="centered", page_title="英単語マスター", page_icon="📝")
 
-# --- 共通関数：データ読み込み ---
+# --- データ読み込み ---
 def load_csv_data(filename):
     data = []
     try:
@@ -34,52 +34,83 @@ def init_firebase():
                 cred = credentials.Certificate(key_dict)
                 firebase_admin.initialize_app(cred)
         except Exception: pass
-    db = firestore.client()
-    return db
+    return firestore.client()
 
 db = init_firebase()
-if 'db' not in st.session_state: st.session_state.db = db
+
+# --- 自動ログイン用スクリプト ---
+def inject_remember_me():
+    st.components.v1.html("""
+        <script>
+            const savedUser = localStorage.getItem('last_user_id');
+            if (savedUser) {
+                // 自動ログインをURLパラメータで通知
+                const url = new URL(window.location.href);
+                if (!url.searchParams.has('auto_login')) {
+                    url.searchParams.set('auto_login', savedUser);
+                    window.location.href = url.toString();
+                }
+            }
+        </script>
+    """, height=0)
 
 # --- セッション初期化 ---
-if 'page' not in st.session_state:
+if 'logged_in' not in st.session_state:
     st.session_state.update({
-        'page': "login", 'logged_in': False, 'current_user': "", 'streak': 0,
-        'learned_words': [], 'session_words': [], 'success_counts': {},
-        'test_words': [], 'input_key': 0, 'user_grade': "中1"
+        'logged_in': False, 'current_user': "", 'page': "login",
+        'streak': 0, 'learned_words': [], 'session_words': [],
+        'user_grade': "中1", 'input_key': 0
     })
 
-# --- ログイン・メニュー表示制御 ---
+# --- ログイン判定 ---
+query_params = st.query_params
+auto_user = query_params.get("auto_login")
+
 if not st.session_state.logged_in:
+    inject_remember_me() # 自動ログインチェック
+    
+    # 自動ログイン処理
+    if auto_user and not st.session_state.logged_in:
+        doc = db.collection("users").document(auto_user).get()
+        if doc.exists:
+            data = doc.to_dict()
+            st.session_state.update({'current_user': auto_user, 'logged_in': True, 'page': "main_menu",
+                                     'streak': data.get('streak', 0), 'learned_words': data.get('learned', []),
+                                     'user_grade': data.get('grade', "中1")})
+            st.rerun()
+
     st.title("🔐 ログイン")
     u_id = st.text_input("名前 (ID):")
     u_pw = st.text_input("パスワード:", type="password")
     
-    if st.button("ログイン / 新規登録"):
+    if st.button("ログイン"):
         if u_id and u_pw:
-            doc_ref = st.session_state.db.collection("users").document(u_id)
+            doc_ref = db.collection("users").document(u_id)
             doc = doc_ref.get()
-            if doc.exists:
-                if doc.to_dict().get('password') == u_pw:
-                    data = doc.to_dict()
-                    st.session_state.update({'current_user': u_id, 'logged_in': True, 'page': "main_menu",
-                                             'streak': data.get('streak', 0), 'learned_words': data.get('learned', []),
-                                             'user_grade': data.get('grade', "中1")})
-                    st.rerun()
-                else: st.error("パスワードが違います")
-            else:
-                doc_ref.set({"password": u_pw, "streak": 0, "learned": [], "grade": "中1"})
-                st.session_state.update({'current_user': u_id, 'logged_in': True, 'page': "main_menu"})
+            if doc.exists and doc.to_dict().get('password') == u_pw:
+                # 成功したらブラウザに保存
+                st.components.v1.html(f"<script>localStorage.setItem('last_user_id', '{u_id}');</script>", height=0)
+                data = doc.to_dict()
+                st.session_state.update({'current_user': u_id, 'logged_in': True, 'page': "main_menu",
+                                         'streak': data.get('streak', 0), 'learned_words': data.get('learned', []),
+                                         'user_grade': data.get('grade', "中1")})
                 st.rerun()
+            else: st.error("IDかパスワードが違います")
 
+            # --- メインメニュー ---
 elif st.session_state.page == "main_menu":
     st.header(f"🔥 {st.session_state.user_grade} コース")
     
+    if st.button("ログアウト (IDを忘れる)"):
+        st.components.v1.html("<script>localStorage.removeItem('last_user_id'); window.location.reload();</script>", height=0)
+
+    # 学年変更機能
     with st.expander("⚙️ 学年設定を変更する"):
         new_grade = st.selectbox("学年選択", ["中1", "中2", "中3"], 
                                  index=["中1", "中2", "中3"].index(st.session_state.user_grade))
         if st.button("変更を保存"):
             st.session_state.user_grade = new_grade
-            st.session_state.db.collection("users").document(st.session_state.current_user).update({"grade": new_grade})
+            db.collection("users").document(st.session_state.current_user).update({"grade": new_grade})
             st.rerun()
 
     if st.button("🚀 今日の練習をはじめる"):
@@ -93,7 +124,7 @@ elif st.session_state.page == "main_menu":
             st.session_state.page = "training"
             st.rerun()
 
-# --- 練習・テストロジック ---
+# --- 練習ロジック ---
 elif st.session_state.page == "training":
     active = [w for w in st.session_state.session_words if st.session_state.success_counts.get(w['a'], 0) < 3]
     if not active:
