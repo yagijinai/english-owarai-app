@@ -38,7 +38,8 @@ if 'init' not in st.session_state:
         'logged_in': False, 'current_user': "", 'page': "login",
         'session_words': [], 'learned_words': [], 'user_grade': "中1",
         'training_counts': {}, 'test_queue': [], 'test_idx': 0,
-        'wrong_target': None, 'wrong_count': 0, 'input_key': 0
+        'wrong_target': None, 'wrong_count': 0, 'input_key': 0,
+        'feedback': "" # 判定結果を表示するための場所を追加
     })
     st.session_state.init = True
 
@@ -67,51 +68,60 @@ def show_main():
     if st.button("🚀 練習開始"):
         words = [w for w in load_csv_data('words.csv') if w['grade'] == st.session_state.user_grade]
         sample = random.sample(words, min(3, len(words)))
-        st.session_state.update({'session_words': sample, 'training_counts': {w['a']: 0 for w in sample}, 'page': "train"})
+        st.session_state.update({
+            'session_words': sample, 
+            'training_counts': {w['a']: 0 for w in sample}, 
+            'page': "train",
+            'feedback': ""
+        })
         st.rerun()
 
 def show_train():
     target = next((w for w in st.session_state.session_words if st.session_state.training_counts[w['a']] < 3), None)
     if not target:
         prev = random.sample(st.session_state.learned_words, min(2, len(st.session_state.learned_words)))
-        st.session_state.update({'test_queue': st.session_state.session_words + prev, 'test_idx': 0, 'page': "test"})
+        st.session_state.update({'test_queue': st.session_state.session_words + prev, 'test_idx': 0, 'page': "test", 'feedback': ""})
         st.rerun()
+        
     st.subheader(f"練習: {target['q']} ({st.session_state.training_counts[target['a']]}/3)")
+    st.write(st.session_state.feedback) # 判定結果を表示
+    
     u_in = st.text_input("入力:", key=f"t_{st.session_state.input_key}")
     if st.button("判定"):
         if u_in.lower().strip() == target['a']:
             st.session_state.training_counts[target['a']] += 1
-            st.session_state.input_key += 1
-            st.rerun()
+            st.session_state.feedback = "✅ 正解！"
+        else:
+            st.session_state.feedback = "❌ 不正解...もう一度！"
+        
+        st.session_state.input_key += 1
+        st.rerun()
 
 def show_test():
+    # テストロジックは以前の通り維持
     if st.session_state.wrong_target:
         st.error(f"復習: {st.session_state.wrong_target['q']} をもう一度！")
         u_in = st.text_input("入力:", key=f"r_{st.session_state.input_key}")
         if st.button("判定"):
             if u_in.lower().strip() == st.session_state.wrong_target['a']:
                 st.session_state.wrong_count += 1
-                if st.session_state.wrong_count >= 3:
-                    st.session_state.update({'wrong_target': None, 'wrong_count': 0})
-                st.rerun()
+                if st.session_state.wrong_count >= 3: st.session_state.update({'wrong_target': None, 'wrong_count': 0})
+            st.session_state.input_key += 1
+            st.rerun()
         return
-
+    # (テストの続きの処理も同様の構成)
     if st.session_state.test_idx >= len(st.session_state.test_queue):
         st.success("全部クリア！")
         if st.button("戻る"): st.session_state.page = "main"; st.rerun()
         return
-
     target = st.session_state.test_queue[st.session_state.test_idx]
     st.subheader(f"テスト: {target['q']}")
     u_in = st.text_input("入力:", key=f"test_{st.session_state.input_key}")
     if st.button("判定"):
-        if u_in.lower().strip() == target['a']:
-            st.session_state.test_idx += 1
-            st.rerun()
-        else:
-            st.session_state.update({'wrong_target': target, 'wrong_count': 0})
-            st.rerun()
+        if u_in.lower().strip() == target['a']: st.session_state.test_idx += 1
+        else: st.session_state.update({'wrong_target': target, 'wrong_count': 0})
+        st.session_state.input_key += 1
+        st.rerun()
 
 if __name__ == "__main__":
     main()
-    
