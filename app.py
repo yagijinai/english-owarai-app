@@ -3,7 +3,6 @@ import random
 import time
 import json
 import csv
-from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
 
@@ -113,18 +112,24 @@ elif st.session_state.page == "training":
     if not active:
         st.session_state.page = "test"
         st.rerun()
+    
     target = active[0]
     st.subheader(f"「{target['q']}」 ({st.session_state.success_counts.get(target['a'], 0)+1}/3)")
     
-    if st.button("❓ つづりヘルプ"): st.session_state.show_hint = True
-    if st.session_state.show_hint: st.info(f"正解: **{target['a']}**")
+    # ヒント機能の強化
+    if st.button("❓ つづりヘルプ"):
+        st.session_state.show_hint = True
+        st.rerun() 
+        
+    if st.session_state.show_hint:
+        st.info(f"正解: **{target['a']}**")
     
     u_in = st.text_input("入力:", key=f"t_{st.session_state.input_key}")
     if st.button("判定"):
         if u_in.lower().strip() == target['a']:
             st.session_state.success_counts[target['a']] += 1
             st.session_state.input_key += 1
-            st.session_state.show_hint = False
+            st.session_state.show_hint = False # 次の問題へ行くときにヒントを隠す
             st.rerun()
         else: st.error("間違い！")
 
