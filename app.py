@@ -34,7 +34,7 @@ def init_firebase():
 db = init_firebase()
 if 'logged_in' not in st.session_state:
     st.session_state.update({'logged_in': False, 'current_user': "", 'page': "login", 
-                             'session_words': [], 'user_grade': "中1", 'show_hint': False})
+                             'session_words': [], 'user_grade': "中1", 'show_hint': False, 'input_key': 0})
 
 def main():
     if not st.session_state.logged_in:
@@ -100,13 +100,7 @@ def show_main_menu():
         st.rerun()
 
 def show_training():
-    # ★エラー防止：データがない場合は安全に再生成する
-    if 'success_counts' not in st.session_state or not st.session_state.session_words:
-        st.warning("データが読み込めませんでした。再読み込みします。")
-        all_words = load_csv_data('words.csv')
-        grade_words = [w for w in all_words if w['grade'] == st.session_state.user_grade]
-        st.session_state.session_words = random.sample(grade_words, min(3, len(grade_words)))
-        st.session_state.success_counts = {w['a']: 0 for w in st.session_state.session_words}
+    if 'success_counts' not in st.session_state:
         st.rerun()
 
     active = [w for w in st.session_state.session_words if st.session_state.success_counts.get(w['a'], 0) < 3]
@@ -122,11 +116,14 @@ def show_training():
         st.rerun()
     if st.session_state.show_hint: st.info(f"正解: {target['a']}")
     
-    u_in = st.text_input("入力:", key="u_input")
+    # ★ポイント：input_keyを変えることで、判定後に自動クリアされる
+    u_in = st.text_input("入力:", key=f"input_{st.session_state.input_key}")
+    
     if st.button("判定"):
         if u_in.lower().strip() == target['a']:
             st.session_state.success_counts[target['a']] += 1
             st.session_state.show_hint = False
+            st.session_state.input_key += 1 # キーを更新して入力欄をクリア
             st.rerun()
         else: st.error("間違い！")
 
