@@ -31,17 +31,22 @@ def load_data(filename):
     except: pass
     return data
 
-# 状態管理の初期化
+# 状態管理の初期化（ログイン状態を含む）
 if 'page' not in st.session_state:
     st.session_state.update({
         'page': 'start', 'user_id': None, 'grade': None,
         'session_words': [], 'training_counts': {}, 'test_queue': [],
         'test_idx': 0, 'wrong_target': None, 'wrong_count': 0,
-        'input_key': 0, 'feedback': ""
+        'input_key': 0, 'feedback': "", 'logged_in': False
     })
 
 def show_start():
     st.title("Welcome")
+    # すでにログイン済みならメニューへ飛ばす
+    if st.session_state.logged_in:
+        st.session_state.page = 'grade_select'
+        st.rerun()
+    
     if st.button("同じIDでつづける"): st.session_state.page = 'login'; st.rerun()
     if st.button("新しいIDではじめる"): st.session_state.page = 'login'; st.rerun()
 
@@ -50,7 +55,9 @@ def show_login():
     u_id = st.text_input("ID")
     u_pw = st.text_input("PW", type="password")
     if st.button("OK"):
+        # ログイン成功時、logged_inをTrueにする
         st.session_state.user_id = u_id
+        st.session_state.logged_in = True
         st.session_state.page = 'grade_select'
         st.rerun()
 
@@ -58,7 +65,6 @@ def show_grade_select():
     st.title("学年選択")
     if st.button("中1"): st.session_state.grade = "中1"; st.session_state.page = "menu"; st.rerun()
     if st.button("中2"): st.session_state.grade = "中2"; st.session_state.page = "menu"; st.rerun()
-
 
 def show_menu():
     st.title("メニュー")
