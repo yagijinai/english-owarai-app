@@ -33,8 +33,12 @@ def init_firebase():
 
 db = init_firebase()
 if 'logged_in' not in st.session_state:
-    st.session_state.update({'logged_in': False, 'current_user': "", 'page': "login", 
-                             'session_words': [], 'user_grade': "中1", 'show_hint': False, 'input_key': 0})
+    st.session_state.update({
+        'logged_in': False, 'current_user': "", 'page': "login", 
+        'session_words': [], 'learned_words': [], 'user_grade': "中1", 
+        'show_hint': False, 'input_key': 0, 'test_queue': [], 'test_idx': 0,
+        'correction_target': None, 'correction_count': 0
+    })
 
 def main():
     if not st.session_state.logged_in:
@@ -47,92 +51,73 @@ def main():
         elif st.session_state.page == "test":
             show_test()
 
-def inject_remember_me():
-    st.components.v1.html("""<script>
-        const saved = localStorage.getItem('last_user_id');
-        if(saved && !window.location.href.includes('auto_login=')) {
-            window.location.href = window.location.href + (window.location.href.includes('?') ? '&' : '?') + 'auto_login=' + saved;
-        }
-    </script>""", height=0)
-
 def show_login_page():
-    inject_remember_me()
-    query = st.query_params
-    auto_user = query.get("auto_login")
-    if auto_user:
-        doc = db.collection("users").document(auto_user).get()
-        if doc.exists:
-            st.session_state.update({'current_user': auto_user, 'logged_in': True, 'page': "main_menu", 
-                                     'user_grade': doc.to_dict().get('grade', "中1")})
-            st.rerun()
-    
+    # 簡易ログイン処理（前回のロジックを継承）
     st.title("🔐 ログイン")
-    u_id = st.text_input("名前 (ID):")
-    u_pw = st.text_input("パスワード:", type="password")
+    u_id = st.text_input("ID:")
+    u_pw = st.text_input("PW:", type="password")
     if st.button("ログイン"):
-        doc_ref = db.collection("users").document(u_id)
-        doc = doc_ref.get()
+        doc = db.collection("users").document(u_id).get()
         if doc.exists and doc.to_dict().get('password') == u_pw:
-            st.components.v1.html(f"<script>localStorage.setItem('last_user_id', '{u_id}');</script>", height=0)
-            st.session_state.update({'current_user': u_id, 'logged_in': True, 'page': "main_menu", 'user_grade': doc.to_dict().get('grade', "中1")})
+            data = doc.to_dict()
+            st.session_state.update({'current_user': u_id, 'logged_in': True, 'page': "main_menu", 
+                                     'user_grade': data.get('grade', "中1"), 'learned_words': data.get('learned', [])})
             st.rerun()
-        else: st.error("ログイン失敗")
 
 def show_main_menu():
     st.header(f"🔥 {st.session_state.user_grade} コース")
-    if st.button("ログアウト"):
-        st.components.v1.html("<script>localStorage.removeItem('last_user_id'); window.location.reload();</script>", height=0)
-    
-    with st.expander("⚙️ 学年設定を変更"):
-        new_grade = st.selectbox("学年", ["中1", "中2", "中3"], index=["中1", "中2", "中3"].index(st.session_state.user_grade))
-        if st.button("保存"):
-            st.session_state.user_grade = new_grade
-            db.collection("users").document(st.session_state.current_user).update({"grade": new_grade})
-            st.rerun()
-    
-    if st.button("🚀 練習開始"):
+    if st.button("練習開始"):
         all_words = load_csv_data('words.csv')
         grade_words = [w for w in all_words if w['grade'] == st.session_state.user_grade]
         sample = random.sample(grade_words, min(3, len(grade_words)))
-        st.session_state.update({'session_words': sample, 
-                                 'success_counts': {w['a']: 0 for w in sample}, 
-                                 'page': "training", 'show_hint': False})
+        st.session_state.update({'session_words': sample, 'page': "training", 
+                                 'training_counts': {w['a']: 0 for w in sample}})
         st.rerun()
 
 def show_training():
-    if 'success_counts' not in st.session_state:
+    # 練習：3回ずつ
+    target = next((w for w in st.session_state.session_words if st.session_state.training_counts[w['a']] < 3), None)
+    if not target:
+        # テスト準備
+        prev = random.sample(st.session_state.learned_words, min(2, len(st.session_state.learned_words)))
+        st.session_state.test_queue = st.session_state.session_words + prev
+        st.session_state.update({'page': "test", 'test_idx': 0})
         st.rerun()
 
-    active = [w for w in st.session_state.session_words if st.session_state.success_counts.get(w['a'], 0) < 3]
-    if not active:
-        st.session_state.page = "test"
-        st.rerun()
-    
-    target = active[0]
-    st.subheader(f"「{target['q']}」 ({st.session_state.success_counts.get(target['a'], 0)+1}/3)")
-    
-    if st.button("❓ ヒント"):
-        st.session_state.show_hint = True
-        st.rerun()
-    if st.session_state.show_hint: st.info(f"正解: {target['a']}")
-    
-    # ★ポイント：input_keyを変えることで、判定後に自動クリアされる
-    u_in = st.text_input("入力:", key=f"input_{st.session_state.input_key}")
-    
+    st.subheader(f"練習: {target['q']} ({st.session_state.training_counts[target['a']]}/3)")
+    u_in = st.text_input("入力:", key=f"t_{st.session_state.input_key}")
     if st.button("判定"):
         if u_in.lower().strip() == target['a']:
-            st.session_state.success_counts[target['a']] += 1
-            st.session_state.show_hint = False
-            st.session_state.input_key += 1 # キーを更新して入力欄をクリア
+            st.session_state.training_counts[target['a']] += 1
+            st.session_state.input_key += 1
             st.rerun()
-        else: st.error("間違い！")
 
 def show_test():
-    st.title("🎉 お疲れ様！")
-    neta = load_csv_data('neta.csv')
-    if neta: st.info(random.choice(neta)['story'])
-    if st.button("メニューへ戻る"):
-        st.session_state.page = "main_menu"
-        st.rerun()
+    if st.session_state.correction_target:
+        st.error(f"復習: {st.session_state.correction_target['q']} をもう一度！")
+        u_in = st.text_input("入力:", key="corr")
+        if st.button("回答"):
+            if u_in.lower().strip() == st.session_state.correction_target['a']:
+                st.session_state.correction_count += 1
+                if st.session_state.correction_count >= 3:
+                    st.session_state.correction_target = None
+                    st.rerun()
+            else: st.error("間違い！")
+        return
 
-main()
+    if st.session_state.test_idx >= len(st.session_state.test_queue):
+        st.success("完了！")
+        if st.button("戻る"): st.session_state.page = "main_menu"; st.rerun()
+        return
+
+    target = st.session_state.test_queue[st.session_state.test_idx]
+    st.subheader(f"テスト: {target['q']}")
+    u_in = st.text_input("入力:", key="test_in")
+    if st.button("判定"):
+        if u_in.lower().strip() == target['a']:
+            st.session_state.test_idx += 1
+            st.rerun()
+        else:
+            st.session_state.correction_target = target
+            st.session_state.correction_count = 0
+            st.rerun()
