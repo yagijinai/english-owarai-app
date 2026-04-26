@@ -26,18 +26,23 @@ def load_data(filename):
         with open(filename, 'r', encoding='utf-8') as f:
             reader = csv.reader(f)
             for row in reader:
-                if not row: continue
-                data.append({"grade": row[0].strip(), "q": row[1].strip(), "a": row[2].strip().lower()})
+                if len(row) >= 3:
+                    data.append({"grade": row[0].strip(), "q": row[1].strip(), "a": row[2].strip().lower()})
     except: pass
     return data
 
-if 'initialized' not in st.session_state:
-    st.session_state.update({
-        'initialized': True, 'page': 'login', 'user_id': None,
-        'grade': None, 'session_words': [], 'training_counts': {},
+def init_session():
+    defaults = {
+        'page': 'login', 'user_id': None, 'grade': None, 
+        'session_words': [], 'training_counts': {}, 
         'test_queue': [], 'test_idx': 0, 'wrong_target': None,
         'wrong_count': 0, 'input_key': 0, 'feedback': ""
-    })
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+init_session()
 
 def show_login():
     st.title("🔐 ログイン")
@@ -46,7 +51,8 @@ def show_login():
     if st.button("ログイン"):
         doc = db.collection("users").document(u_id).get()
         if doc.exists and doc.to_dict().get('password') == u_pw:
-            st.session_state.update({'user_id': u_id, 'page': 'grade_select'})
+            st.session_state.user_id = u_id
+            st.session_state.page = 'grade_select'
             st.rerun()
 
 def show_grade_select():
@@ -57,15 +63,21 @@ def show_grade_select():
 
     def show_training():
     words = [w for w in load_data('words.csv') if w['grade'] == st.session_state.grade]
+    
+    # 練習用の単語がまだセットされていなければ初期化
     if not st.session_state.session_words:
         st.session_state.session_words = random.sample(words, min(3, len(words)))
         st.session_state.training_counts = {w['a']: 0 for w in st.session_state.session_words}
 
+    # まだ3回終わっていない単語を探す
     target = next((w for w in st.session_state.session_words if st.session_state.training_counts[w['a']] < 3), None)
     
     if not target:
-        prev = random.sample(words, min(2, len(words))) # 復習用
-        st.session_state.update({'test_queue': st.session_state.session_words + prev, 'page': 'test'})
+        # 練習終了、テストへ
+        prev = random.sample(words, min(2, len(words)))
+        st.session_state.test_queue = st.session_state.session_words + prev
+        st.session_state.test_idx = 0
+        st.session_state.page = 'test'
         st.rerun()
 
     st.subheader(f"練習: {target['q']} ({st.session_state.training_counts[target['a']]}/3)")
@@ -76,7 +88,8 @@ def show_grade_select():
         if u_in.lower().strip() == target['a']:
             st.session_state.training_counts[target['a']] += 1
             st.session_state.feedback = "✅ 正解！"
-        else: st.session_state.feedback = "❌ 不正解"
+        else:
+            st.session_state.feedback = "❌ 不正解..."
         st.session_state.input_key += 1
         st.rerun()
     st.write(st.session_state.feedback)
@@ -88,7 +101,7 @@ def show_test():
         if st.button("判定"):
             if u_in.lower().strip() == st.session_state.wrong_target['a']:
                 st.session_state.wrong_count += 1
-                if st.session_state.wrong_count >= 3: st.session_state.update({'wrong_target': None})
+                if st.session_state.wrong_count >= 3: st.session_state.wrong_target = None
             st.session_state.input_key += 1
             st.rerun()
         return
@@ -99,15 +112,16 @@ def show_test():
     if st.button("判定"):
         if u_in.lower().strip() == target['a']:
             st.session_state.test_idx += 1
-            if st.session_state.test_idx >= len(st.session_state.test_queue): st.session_state.page = "menu"
-        else: st.session_state.update({'wrong_target': target, 'wrong_count': 0})
+            if st.session_state.test_idx >= len(st.session_state.test_queue):
+                st.success("全部クリア！"); st.session_state.page = "menu"
+        else: st.session_state.wrong_target = target; st.session_state.wrong_count = 0
         st.session_state.input_key += 1
         st.rerun()
 
-# ルーター
+# 画面切り替え
 if st.session_state.page == 'login': show_login()
 elif st.session_state.page == 'grade_select': show_grade_select()
 elif st.session_state.page == 'menu':
-    if st.button("練習開始"): st.session_state.page = 'train'; st.rerun()
+    if st.button("練習開始"): st.session_state.session_words = []; st.session_state.page = 'train'; st.rerun()
 elif st.session_state.page == 'train': show_training()
 elif st.session_state.page == 'test': show_test()
