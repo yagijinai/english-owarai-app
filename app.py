@@ -7,10 +7,8 @@ from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# --- ページ設定 ---
 st.set_page_config(layout="centered", page_title="英単語マスター", page_icon="📝")
 
-# --- データ読み込み ---
 def load_csv_data(filename):
     data = []
     try:
@@ -25,7 +23,6 @@ def load_csv_data(filename):
     except Exception: pass
     return data
 
-# --- Firebase初期化 ---
 def init_firebase():
     if not firebase_admin._apps:
         try:
@@ -37,14 +34,20 @@ def init_firebase():
     return firestore.client()
 
 db = init_firebase()
+if 'db' not in st.session_state: st.session_state.db = db
 
-# --- 自動ログイン用スクリプト ---
+if 'logged_in' not in st.session_state:
+    st.session_state.update({
+        'logged_in': False, 'current_user': "", 'page': "login", 'streak': 0,
+        'learned_words': [], 'session_words': [], 'user_grade': "中1",
+        'input_key': 0, 'show_hint': False
+    })
+
 def inject_remember_me():
     st.components.v1.html("""
         <script>
             const savedUser = localStorage.getItem('last_user_id');
             if (savedUser) {
-                // 自動ログインをURLパラメータで通知
                 const url = new URL(window.location.href);
                 if (!url.searchParams.has('auto_login')) {
                     url.searchParams.set('auto_login', savedUser);
@@ -54,22 +57,11 @@ def inject_remember_me():
         </script>
     """, height=0)
 
-# --- セッション初期化 ---
-if 'logged_in' not in st.session_state:
-    st.session_state.update({
-        'logged_in': False, 'current_user': "", 'page': "login",
-        'streak': 0, 'learned_words': [], 'session_words': [],
-        'user_grade': "中1", 'input_key': 0
-    })
-
-# --- ログイン判定 ---
-query_params = st.query_params
-auto_user = query_params.get("auto_login")
-
 if not st.session_state.logged_in:
-    inject_remember_me() # 自動ログインチェック
+    inject_remember_me()
+    query_params = st.query_params
+    auto_user = query_params.get("auto_login")
     
-    # 自動ログイン処理
     if auto_user and not st.session_state.logged_in:
         doc = db.collection("users").document(auto_user).get()
         if doc.exists:
@@ -82,13 +74,11 @@ if not st.session_state.logged_in:
     st.title("🔐 ログイン")
     u_id = st.text_input("名前 (ID):")
     u_pw = st.text_input("パスワード:", type="password")
-    
     if st.button("ログイン"):
         if u_id and u_pw:
             doc_ref = db.collection("users").document(u_id)
             doc = doc_ref.get()
             if doc.exists and doc.to_dict().get('password') == u_pw:
-                # 成功したらブラウザに保存
                 st.components.v1.html(f"<script>localStorage.setItem('last_user_id', '{u_id}');</script>", height=0)
                 data = doc.to_dict()
                 st.session_state.update({'current_user': u_id, 'logged_in': True, 'page': "main_menu",
@@ -97,17 +87,13 @@ if not st.session_state.logged_in:
                 st.rerun()
             else: st.error("IDかパスワードが違います")
 
-            # --- メインメニュー ---
-elif st.session_state.page == "main_menu":
+            elif st.session_state.page == "main_menu":
     st.header(f"🔥 {st.session_state.user_grade} コース")
-    
-    if st.button("ログアウト (IDを忘れる)"):
+    if st.button("ログアウト"):
         st.components.v1.html("<script>localStorage.removeItem('last_user_id'); window.location.reload();</script>", height=0)
 
-    # 学年変更機能
     with st.expander("⚙️ 学年設定を変更する"):
-        new_grade = st.selectbox("学年選択", ["中1", "中2", "中3"], 
-                                 index=["中1", "中2", "中3"].index(st.session_state.user_grade))
+        new_grade = st.selectbox("学年選択", ["中1", "中2", "中3"], index=["中1", "中2", "中3"].index(st.session_state.user_grade))
         if st.button("変更を保存"):
             st.session_state.user_grade = new_grade
             db.collection("users").document(st.session_state.current_user).update({"grade": new_grade})
@@ -116,32 +102,33 @@ elif st.session_state.page == "main_menu":
     if st.button("🚀 今日の練習をはじめる"):
         all_words = load_csv_data('words.csv')
         grade_words = [w for w in all_words if w['grade'] == st.session_state.user_grade]
-        if not grade_words:
-            st.error("その学年の単語データがCSVにありません！")
-        else:
-            st.session_state.session_words = random.sample(grade_words, min(3, len(grade_words)))
-            st.session_state.success_counts = {w['a']: 0 for w in st.session_state.session_words}
-            st.session_state.page = "training"
-            st.rerun()
+        st.session_state.session_words = random.sample(grade_words, min(3, len(grade_words)))
+        st.session_state.success_counts = {w['a']: 0 for w in st.session_state.session_words}
+        st.session_state.page = "training"
+        st.session_state.show_hint = False
+        st.rerun()
 
-# --- 練習ロジック ---
 elif st.session_state.page == "training":
     active = [w for w in st.session_state.session_words if st.session_state.success_counts.get(w['a'], 0) < 3]
     if not active:
         st.session_state.page = "test"
         st.rerun()
-    
     target = active[0]
     st.subheader(f"「{target['q']}」 ({st.session_state.success_counts.get(target['a'], 0)+1}/3)")
+    
+    if st.button("❓ つづりヘルプ"): st.session_state.show_hint = True
+    if st.session_state.show_hint: st.info(f"正解: **{target['a']}**")
+    
     u_in = st.text_input("入力:", key=f"t_{st.session_state.input_key}")
     if st.button("判定"):
         if u_in.lower().strip() == target['a']:
             st.session_state.success_counts[target['a']] += 1
             st.session_state.input_key += 1
+            st.session_state.show_hint = False
             st.rerun()
         else: st.error("間違い！")
 
-elif st.session_state.page == "test":
+        elif st.session_state.page == "test":
     st.title("🎉 お疲れ様！")
     neta = load_csv_data('neta.csv')
     if neta:
