@@ -5,7 +5,6 @@ import csv
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# --- 1. 初期設定とFirebase ---
 st.set_page_config(layout="centered", page_title="英単語マスター", page_icon="📝")
 
 def init_firebase():
@@ -20,15 +19,6 @@ def init_firebase():
 
 db = init_firebase()
 
-# --- 2. 状態管理の初期化 ---
-if 'page' not in st.session_state:
-    st.session_state.update({
-        'page': 'start', 'user_id': None, 'grade': None,
-        'session_words': [], 'training_counts': {}, 'test_queue': [],
-        'test_idx': 0, 'wrong_target': None, 'wrong_count': 0,
-        'input_key': 0, 'feedback': ""
-    })
-
 def load_data(filename):
     data = []
     try:
@@ -40,7 +30,20 @@ def load_data(filename):
     except: pass
     return data
 
-# --- 3. 画面描画ロジック ---
+# アプリ起動時に必ず状態をチェックし、KeyErrorを防ぐ
+def init_session():
+    defaults = {
+        'page': 'start', 'user_id': None, 'grade': None,
+        'session_words': [], 'training_counts': {}, 'test_queue': [],
+        'test_idx': 0, 'wrong_target': None, 'wrong_count': 0,
+        'input_key': 0, 'feedback': ""
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+init_session()
+
 def show_start():
     st.title("Welcome")
     if st.button("同じIDでつづける"): st.session_state.page = 'login'; st.rerun()
@@ -62,7 +65,7 @@ def show_grade_select():
     if st.button("中1"): st.session_state.grade = "中1"; st.session_state.page = "menu"; st.rerun()
     if st.button("中2"): st.session_state.grade = "中2"; st.session_state.page = "menu"; st.rerun()
 
-def show_menu():
+    def show_menu():
     st.title("メニュー")
     if st.button("練習開始"):
         words = [w for w in load_data('words.csv') if w['grade'] == st.session_state.grade]
@@ -91,14 +94,13 @@ def show_train():
     st.write(st.session_state.feedback)
 
 def show_test():
-    st.write("テスト画面（仮）") # テストロジックはここに記述
+    st.write("テスト画面（現在実装中）")
     if st.button("戻る"): st.session_state.page = "menu"; st.rerun()
 
-# --- 4. メインルーティング ---
+# 画面切り替え（ルーター）
 if st.session_state.page == 'start': show_start()
 elif st.session_state.page == 'login': show_login()
 elif st.session_state.page == 'grade_select': show_grade_select()
 elif st.session_state.page == 'menu': show_menu()
 elif st.session_state.page == 'train': show_train()
 elif st.session_state.page == 'test': show_test()
-
