@@ -93,16 +93,27 @@ def show_main_menu():
     if st.button("🚀 練習開始"):
         all_words = load_csv_data('words.csv')
         grade_words = [w for w in all_words if w['grade'] == st.session_state.user_grade]
-        st.session_state.update({'session_words': random.sample(grade_words, min(3, len(grade_words))), 
-                                 'success_counts': {w['a']: 0 for w in random.sample(grade_words, min(3, len(grade_words)))}, 
+        sample = random.sample(grade_words, min(3, len(grade_words)))
+        st.session_state.update({'session_words': sample, 
+                                 'success_counts': {w['a']: 0 for w in sample}, 
                                  'page': "training", 'show_hint': False})
         st.rerun()
 
 def show_training():
+    # ★エラー防止：データがない場合は安全に再生成する
+    if 'success_counts' not in st.session_state or not st.session_state.session_words:
+        st.warning("データが読み込めませんでした。再読み込みします。")
+        all_words = load_csv_data('words.csv')
+        grade_words = [w for w in all_words if w['grade'] == st.session_state.user_grade]
+        st.session_state.session_words = random.sample(grade_words, min(3, len(grade_words)))
+        st.session_state.success_counts = {w['a']: 0 for w in st.session_state.session_words}
+        st.rerun()
+
     active = [w for w in st.session_state.session_words if st.session_state.success_counts.get(w['a'], 0) < 3]
     if not active:
         st.session_state.page = "test"
         st.rerun()
+    
     target = active[0]
     st.subheader(f"「{target['q']}」 ({st.session_state.success_counts.get(target['a'], 0)+1}/3)")
     
