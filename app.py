@@ -60,7 +60,6 @@ if not st.session_state.logged_in:
     inject_remember_me()
     query_params = st.query_params
     auto_user = query_params.get("auto_login")
-    
     if auto_user and not st.session_state.logged_in:
         doc = db.collection("users").document(auto_user).get()
         if doc.exists:
@@ -116,10 +115,9 @@ elif st.session_state.page == "training":
     target = active[0]
     st.subheader(f"「{target['q']}」 ({st.session_state.success_counts.get(target['a'], 0)+1}/3)")
     
-    # ヒント機能の強化
     if st.button("❓ つづりヘルプ"):
         st.session_state.show_hint = True
-        st.rerun() 
+        st.rerun()
         
     if st.session_state.show_hint:
         st.info(f"正解: **{target['a']}**")
@@ -129,7 +127,7 @@ elif st.session_state.page == "training":
         if u_in.lower().strip() == target['a']:
             st.session_state.success_counts[target['a']] += 1
             st.session_state.input_key += 1
-            st.session_state.show_hint = False # 次の問題へ行くときにヒントを隠す
+            st.session_state.show_hint = False
             st.rerun()
         else: st.error("間違い！")
 
