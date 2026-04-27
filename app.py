@@ -18,13 +18,14 @@ def init_firebase():
 
 db = init_firebase()
 
-# アプリの全変数をここで定義し、AttributeErrorを防ぐ
+# セッション変数をここで全て初期化 (KeyError対策)
 def init_session():
     if 'page' not in st.session_state:
         st.session_state.update({
             'page': 'start', 'logged_in': False, 'grade': None,
             'session_words': [], 'training_counts': {}, 'test_queue': [],
-            'test_idx': 0, 'input_key': 0, 'feedback': ""
+            'test_idx': 0, 'input_key': 0, 'feedback': "", 
+            'hint_shown': False  # ヒント表示用変数を追加
         })
 
 init_session()
@@ -59,6 +60,7 @@ def show_menu():
         st.session_state.session_words = random.sample(words, min(3, len(words)))
         st.session_state.training_counts = {w['a']: 0 for w in st.session_state.session_words}
         st.session_state.page = 'train'
+        st.session_state.hint_shown = False # 練習開始時にヒントフラグをリセット
         st.rerun()
 
 def show_train():
@@ -70,12 +72,21 @@ def show_train():
         st.rerun()
     
     st.subheader(f"練習: {target['q']}")
+    
+    # ヒント機能
+    if st.button("ヒント"):
+        st.session_state.hint_shown = True
+    if st.session_state.hint_shown:
+        st.info(f"正解: {target['a']}")
+    
     u_in = st.text_input("入力:", key=f"t_{st.session_state.input_key}")
     if st.button("判定"):
         if u_in.lower().strip() == target['a']:
             st.session_state.training_counts[target['a']] += 1
             st.session_state.feedback = "✅ 正解"
-        else: st.session_state.feedback = "❌ 不正解"
+            st.session_state.hint_shown = False # 次の問題へ移るのでヒントを隠す
+        else: 
+            st.session_state.feedback = "❌ 不正解"
         st.session_state.input_key += 1
         st.rerun()
     st.write(st.session_state.feedback)
