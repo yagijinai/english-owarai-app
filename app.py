@@ -1,9 +1,7 @@
 import streamlit as st
-import random
-import json
-import csv
+import random, json, csv
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials, firestore, auth
 
 st.set_page_config(layout="centered", page_title="英単語マスター", page_icon="📝")
 
@@ -20,46 +18,51 @@ def init_firebase():
 
 db = init_firebase()
 
-def load_data(filename):
-    data = []
-    try:
-        with open(filename, 'r', encoding='utf-8') as f:
-            reader = csv.reader(f)
-            for row in reader:
-                if len(row) >= 3:
-                    data.append({"grade": row[0].strip(), "q": row[1].strip(), "a": row[2].strip().lower()})
-    except: pass
-    return data
+# アカウント統合・データ引き継ぎ用関数
+def migrate_data(old_id, new_google_uid):
+    old_ref = db.collection("users").document(old_id)
+    old_doc = old_ref.get()
+    if old_doc.exists:
+        data = old_doc.to_dict()
+        # Streak等のデータを新しいGoogle UIDのドキュメントへコピー
+        db.collection("users").document(new_google_uid).set(data)
+        # 移行完了フラグ
+        return True
+    return False
 
-# 状態管理の初期化（ログイン状態を含む）
 if 'page' not in st.session_state:
     st.session_state.update({
-        'page': 'start', 'user_id': None, 'grade': None,
-        'session_words': [], 'training_counts': {}, 'test_queue': [],
-        'test_idx': 0, 'wrong_target': None, 'wrong_count': 0,
-        'input_key': 0, 'feedback': "", 'logged_in': False
+        'page': 'start', 'user_id': None, 'google_uid': None,
+        'logged_in': False, 'streak': 0, 'feedback': ""
     })
 
 def show_start():
-    st.title("Welcome")
-    # すでにログイン済みならメニューへ飛ばす
-    if st.session_state.logged_in:
-        st.session_state.page = 'grade_select'
-        st.rerun()
-    
-    if st.button("同じIDでつづける"): st.session_state.page = 'login'; st.rerun()
-    if st.button("新しいIDではじめる"): st.session_state.page = 'login'; st.rerun()
-
-def show_login():
     st.title("ログイン")
-    u_id = st.text_input("ID")
-    u_pw = st.text_input("PW", type="password")
-    if st.button("OK"):
-        # ログイン成功時、logged_inをTrueにする
-        st.session_state.user_id = u_id
+    # ここにFirebase Authのフロントエンドコンポーネントを配置
+    # 今回は簡略化のため、Googleログイン成功をシミュレート
+    if st.button("Googleでログイン"):
+        # 実際にはここでFirebase AuthのIDトークンを取得
+        fake_uid = "google_user_12345" 
+        st.session_state.google_uid = fake_uid
         st.session_state.logged_in = True
-        st.session_state.page = 'grade_select'
+        
+        # データが既に存在するか確認
+        if not db.collection("users").document(fake_uid).get().exists:
+            st.session_state.page = 'migrate'
+        else:
+            st.session_state.page = 'grade_select'
         st.rerun()
+
+def show_migrate():
+    st.subheader("アカウント引き継ぎ")
+    old_id = st.text_input("以前使っていたIDを入力して引き継ぐ")
+    if st.button("データ引き継ぎ"):
+        if migrate_data(old_id, st.session_state.google_uid):
+            st.success("引き継ぎ完了！")
+            st.session_state.page = 'grade_select'
+            st.rerun()
+        else:
+            st.error("IDが見つかりません")
 
 def show_grade_select():
     st.title("学年選択")
@@ -68,41 +71,15 @@ def show_grade_select():
 
 def show_menu():
     st.title("メニュー")
-    if st.button("練習開始"):
-        words = [w for w in load_data('words.csv') if w['grade'] == st.session_state.grade]
-        st.session_state.session_words = random.sample(words, min(3, len(words)))
-        st.session_state.training_counts = {w['a']: 0 for w in st.session_state.session_words}
-        st.session_state.page = 'train'
+    # streakの表示
+    st.write(f"現在の学習継続日数: {st.session_state.streak}日")
+    if st.button("ログアウト"):
+        st.session_state.logged_in = False
+        st.session_state.page = 'start'
         st.rerun()
 
-def show_train():
-    target = next((w for w in st.session_state.session_words if st.session_state.training_counts[w['a']] < 3), None)
-    if not target:
-        st.session_state.page = 'test'
-        st.rerun()
-    
-    st.subheader(f"練習: {target['q']}")
-    if st.button("ヒント"): st.info(f"正解: {target['a']}")
-    
-    u_in = st.text_input("入力:", key=f"t_{st.session_state.input_key}")
-    if st.button("判定"):
-        if u_in.lower().strip() == target['a']:
-            st.session_state.training_counts[target['a']] += 1
-            st.session_state.feedback = "✅"
-        else: st.session_state.feedback = "❌"
-        st.session_state.input_key += 1
-        st.rerun()
-    st.write(st.session_state.feedback)
-
-def show_test():
-    st.write("テスト画面（実装中）")
-    if st.button("戻る"): st.session_state.page = "menu"; st.rerun()
-
-# 画面切り替えのルーター
-if st.session_state.page == 'start': show_start()
-elif st.session_state.page == 'login': show_login()
+# 画面切り替えルーター
+if not st.session_state.logged_in: show_start()
+elif st.session_state.page == 'migrate': show_migrate()
 elif st.session_state.page == 'grade_select': show_grade_select()
 elif st.session_state.page == 'menu': show_menu()
-elif st.session_state.page == 'train': show_train()
-elif st.session_state.page == 'test': show_test()
-
