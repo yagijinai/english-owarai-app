@@ -5,6 +5,7 @@ from firebase_admin import credentials, firestore
 
 st.set_page_config(layout="centered", page_title="英単語マスター", page_icon="📝")
 
+# Firebase初期化
 def init_firebase():
     if not firebase_admin._apps:
         try:
@@ -17,6 +18,17 @@ def init_firebase():
 
 db = init_firebase()
 
+# アプリの全変数をここで定義し、AttributeErrorを防ぐ
+def init_session():
+    if 'page' not in st.session_state:
+        st.session_state.update({
+            'page': 'start', 'logged_in': False, 'grade': None,
+            'session_words': [], 'training_counts': {}, 'test_queue': [],
+            'test_idx': 0, 'input_key': 0, 'feedback': ""
+        })
+
+init_session()
+
 def load_data(filename):
     data = []
     try:
@@ -28,18 +40,9 @@ def load_data(filename):
     except: pass
     return data
 
-# 状態の初期化
-if 'page' not in st.session_state:
-    st.session_state.update({
-        'page': 'start', 'logged_in': False, 'grade': None,
-        'session_words': [], 'training_counts': {}, 'test_queue': [],
-        'test_idx': 0, 'wrong_target': None, 'input_key': 0, 'feedback': ""
-    })
-
 def show_start():
     st.title("Welcome")
     if st.button("Googleでログイン"):
-        # 仮のログイン処理
         st.session_state.logged_in = True
         st.session_state.page = 'grade_select'
         st.rerun()
@@ -92,8 +95,13 @@ def show_test():
         st.rerun()
 
 # 画面切り替えルーター
-if not st.session_state.logged_in: show_start()
-elif st.session_state.page == 'grade_select': show_grade_select()
-elif st.session_state.page == 'menu': show_menu()
-elif st.session_state.page == 'train': show_train()
-elif st.session_state.page == 'test': show_test()
+if not st.session_state.logged_in: 
+    show_start()
+elif st.session_state.page == 'grade_select': 
+    show_grade_select()
+elif st.session_state.page == 'menu': 
+    show_menu()
+elif st.session_state.page == 'train': 
+    show_train()
+elif st.session_state.page == 'test': 
+    show_test()
