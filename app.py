@@ -19,12 +19,15 @@ def init_firebase():
 db = init_firebase()
 
 # セッション変数の初期化（網羅的定義）
-if 'page' not in st.session_state:
-    st.session_state.update({
-        'page': 'menu', 'grade': "中1", 'session_words': [],
-        'training_counts': {}, 'test_queue': [], 'test_idx': 0,
-        'wrong_target': None, 'wrong_retry_count': 0, 'input_key': 0
-    })
+def init_session():
+    if 'page' not in st.session_state:
+        st.session_state.update({
+            'page': 'menu', 'grade': "中1", 'session_words': [],
+            'training_counts': {}, 'test_queue': [], 'test_idx': 0,
+            'wrong_target': None, 'wrong_retry_count': 0, 'input_key': 0,
+            'hint_shown': False
+        })
+init_session()
 
 def load_data(filename):
     data = []
@@ -49,10 +52,18 @@ def show_train():
     
     target = pending[0]
     st.subheader(f"練習: {target['q']}")
+    
+    # ヒント機能
+    if st.button("ヒントを表示"):
+        st.session_state.hint_shown = True
+    if st.session_state.hint_shown:
+        st.info(f"正解: {target['a']}")
+        
     u_in = st.text_input("入力:", key=f"t_{st.session_state.input_key}")
     if st.button("判定"):
         if u_in.lower().strip() == target['a']:
             st.session_state.training_counts[target['a']] = st.session_state.training_counts.get(target['a'], 0) + 1
+            st.session_state.hint_shown = False # 次の単語のためにリセット
         st.session_state.input_key += 1
         st.rerun()
 
@@ -73,7 +84,6 @@ def show_retry():
                 st.session_state.page = 'test'
         st.session_state.input_key += 1
         st.rerun()
-
 
 def show_test():
     if st.session_state.test_idx >= len(st.session_state.test_queue):
@@ -108,8 +118,11 @@ if st.session_state.page == 'menu':
         if words:
             st.session_state.session_words = random.sample(words, min(3, len(words)))
             st.session_state.training_counts = {w['a']: 0 for w in st.session_state.session_words}
+            st.session_state.hint_shown = False
             st.session_state.page = 'train'
             st.rerun()
+        else:
+            st.error("単語データが読み込めません。")
 elif st.session_state.page == 'train': show_train()
 elif st.session_state.page == 'retry': show_retry()
 elif st.session_state.page == 'test': show_test()
