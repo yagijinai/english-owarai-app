@@ -88,6 +88,7 @@ def load_data_from_sheets(sheet_name, selected_grade=None):
     try:
         scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
         if os.path.exists('secret_key.json'):
+            # 【修正点】scopesをキーワード引数（scopes=scopes）として正しく渡すよう修正
             creds = Credentials.from_service_account_file('secret_key.json', scopes=scopes)
         elif "GCP_SERVICE_ACCOUNT" in st.secrets:
             key_dict = json.loads(st.secrets["GCP_SERVICE_ACCOUNT"])
@@ -261,6 +262,7 @@ def show_train():
     elif st.session_state.last_train_status == "wrong":
         st.error("❌ つづりが正しくありません！ もう一度入力してみよう。")
 
+    # 【修正点】Streamlitでサポートされていない引数 'autocomplete' を完全除去
     u_in = st.text_input("英語を入力（入力してEnterで判定）:", key=f"t_{st.session_state.input_key}")
     
     apply_rescue_autofocus()
