@@ -9,6 +9,16 @@ from google.oauth2.service_account import Credentials
 
 st.set_page_config(layout="centered", page_title="英単語マスター", page_icon="📝")
 
+# スマホの画面の上下余白をギリギリまで削ってコンパクトにする魔法の設定
+st.markdown("""
+    <style>
+        .block-container { padding-top: 1rem !important; padding-bottom: 0rem !important; }
+        h3 { font-size: 1.2rem !important; margin-bottom: 0.5rem !important; }
+        div.stButton > button { padding: 0.25rem 0.5rem !important; }
+        .stTextInput { margin-top: -10px !important; }
+    </style>
+""", unsafe_allow_html=True)
+
 # ==========================================
 # 【Part 1: バックエンド処理・データ連携と初期化】
 # ==========================================
@@ -172,7 +182,6 @@ def load_data_from_sheets(sheet_name, selected_grade=None):
     return data
 
 def apply_rescue_autofocus():
-    # キーボードの予測変換（パスワード属性や非表示属性）をシステム的に強力に強制適用するJavaScript
     components.html(
         """
         <script>
@@ -185,13 +194,11 @@ def apply_rescue_autofocus():
                         targetInput.focus();
                         targetInput.select();
                     }
-                    // キーボードのカンニング予測機能をAndroidシステムレベルでブロックする設定
                     targetInput.setAttribute("autocomplete", "off");
                     targetInput.setAttribute("autocorrect", "off");
                     targetInput.setAttribute("autocapitalize", "off");
                     targetInput.setAttribute("spellcheck", "false");
                     targetInput.setAttribute("type", "text");
-                    // ブラウザに「これは英単語のテスト入力欄である（予測対象外）」と誤認させる
                     targetInput.setAttribute("name", "one-time-code");
                 }
             }
@@ -238,7 +245,7 @@ def show_start():
 
 def show_menu():
     st.title("メインメニュー")
-    st.markdown(f"### 🔥 連続学習 **{st.session_state.streak_count}** 日目！ すごいです！毎日続けよう！")
+    st.markdown(f"### 🔥 連続学習 **{st.session_state.streak_count}** 日目！")
     st.write("---")
     st.session_state.grade = st.selectbox("学年を選択", ["中1", "中2", "中3"], index=1)
     if st.button("🚀 練習開始", use_container_width=True):
@@ -275,20 +282,26 @@ def show_train():
 
     target = st.session_state.current_train_word
     current_count = st.session_state.training_counts[target['a']]
-    st.subheader(f"練習: {target['q']} (現在の正解数: {current_count}/3)")
     
-    if st.button("❓ ヒント"):
-        st.session_state.hint_shown = True
-    if st.session_state.hint_shown:
-        st.info(f"正解: {target['a']}")
+    # --- 【ここを修正】ヒントボタンを上に逃がし、問題文と入力欄を下部に集約 ---
+    col_h1, col_h2 = st.columns([3, 1])
+    with col_h2:
+        if st.button("❓ 💡", key="hint_btn"): # 省スペースなアイコンボタンに変更
+            st.session_state.hint_shown = True
+    with col_h1:
+        if st.session_state.hint_shown:
+            st.info(f"正解: {target['a']}")
 
     if st.session_state.show_correct_msg:
-        st.success("⭕ 正解！ 次の単語にすすみます！")
+        st.success("⭕ 正解！ 次へ！")
         st.session_state.show_correct_msg = False 
     elif st.session_state.last_train_status == "wrong":
-        st.error("❌ つづりが正しくありません！ もう一度入力してみよう。")
+        st.error("❌ もう一度入力してみよう。")
 
-    u_in = st.text_input("英語を入力（入力してEnterで判定）:", key=f"t_{st.session_state.input_key}")
+    # キーボードの直上に滑り込ませるため、問題文を入力欄のラベルとして文字を小さくドッキング
+    input_label = f"【練習】 {target['q']} (正解: {current_count}/3 回)"
+    u_in = st.text_input(input_label, key=f"t_{st.session_state.input_key}")
+    
     apply_rescue_autofocus()
     
     if u_in:
@@ -312,16 +325,15 @@ def show_retry():
         st.rerun()
         return
         
-    st.error(f"⚠️ テストで間違えた単語の復習です。5回正解するまで練習しよう！")
-    st.info(f"💡 日本語: {target['q']}  |  👉 正解のつづり: **{target['a']}**")
-    st.subheader(f"復習入力 ({st.session_state.wrong_retry_count}/5 回成功)")
-    
     if st.session_state.last_test_status == "retry_correct_step":
         st.success("⭕ 正解！その調子！")
     elif st.session_state.last_test_status == "retry_wrong":
-        st.warning(f"❌ つづりが正しくありません。お手本のつづり【{target['a']}】をよく見て入力しよう！")
+        st.warning(f"❌ お手本【{target['a']}】をよく見て入力！")
 
-    u_in = st.text_input("お手本通りに入力（Enterで判定）:", key=f"r_{st.session_state.input_key}")
+    # 復習用のお手本文字も入力欄のすぐ上に完全固定
+    retry_label = f"⚠️復習({st.session_state.wrong_retry_count}/5回) {target['q']} ⇒ 正解： {target['a']}"
+    u_in = st.text_input(retry_label, key=f"r_{st.session_state.input_key}")
+    
     apply_rescue_autofocus()
     
     if u_in:
@@ -355,12 +367,14 @@ def show_test():
         return
     
     target = st.session_state.test_queue[st.session_state.test_idx]
-    st.subheader(f"テスト第 {st.session_state.test_idx + 1} 問: {target['q']}")
     
     if st.session_state.last_test_status == "test_wrong":
         st.error("❌ つづりが正しくありません！")
 
-    u_in = st.text_input("回答を入力（Enterで確定）:", key=f"test_{st.session_state.input_key}")
+    # テスト問題文も、入力欄のテキストラベルに一体化させることで押し出しを完全防止
+    test_label = f"🔥 テスト第 {st.session_state.test_idx + 1} 問: 【 {target['q']} 】"
+    u_in = st.text_input(test_label, key=f"test_{st.session_state.input_key}")
+    
     apply_rescue_autofocus()
     
     if u_in:
