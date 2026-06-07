@@ -283,14 +283,9 @@ def show_train():
     target = st.session_state.current_train_word
     current_count = st.session_state.training_counts[target['a']]
     
-    # --- 【ここを修正】ヒントボタンを上に逃がし、問題文と入力欄を下部に集約 ---
-    col_h1, col_h2 = st.columns([3, 1])
-    with col_h2:
-        if st.button("❓ 💡", key="hint_btn"): # 省スペースなアイコンボタンに変更
-            st.session_state.hint_shown = True
-    with col_h1:
-        if st.session_state.hint_shown:
-            st.info(f"正解: {target['a']}")
+    # ヒント要求ボタンは一番上にすっきり配置
+    if st.button("❓ ヒントをみる", key="hint_btn", use_container_width=True):
+        st.session_state.hint_shown = True
 
     if st.session_state.show_correct_msg:
         st.success("⭕ 正解！ 次へ！")
@@ -298,10 +293,13 @@ def show_train():
     elif st.session_state.last_train_status == "wrong":
         st.error("❌ もう一度入力してみよう。")
 
-    # キーボードの直上に滑り込ませるため、問題文を入力欄のラベルとして文字を小さくドッキング
-    input_label = f"【練習】 {target['q']} (正解: {current_count}/3 回)"
+    # 【修正箇所】ヒントが要求されたら、入力欄のすぐ上のラベルに直接・横幅一杯にドッキングして表示
+    if st.session_state.hint_shown:
+        input_label = f"【練習】 {target['q']} (正解: {current_count}/3) ⇒ 💡正解：{target['a']}"
+    else:
+        input_label = f"【練習】 {target['q']} (正解: {current_count}/3)"
+
     u_in = st.text_input(input_label, key=f"t_{st.session_state.input_key}")
-    
     apply_rescue_autofocus()
     
     if u_in:
@@ -328,12 +326,10 @@ def show_retry():
     if st.session_state.last_test_status == "retry_correct_step":
         st.success("⭕ 正解！その調子！")
     elif st.session_state.last_test_status == "retry_wrong":
-        st.warning(f"❌ お手本【{target['a']}】をよく見て入力！")
+        st.warning(f"❌ お手本をよく見て入力！")
 
-    # 復習用のお手本文字も入力欄のすぐ上に完全固定
-    retry_label = f"⚠️復習({st.session_state.wrong_retry_count}/5回) {target['q']} ⇒ 正解： {target['a']}"
+    retry_label = f"⚠️復習({st.session_state.wrong_retry_count}/5回) {target['q']} ⇒ 👉正解：{target['a']}"
     u_in = st.text_input(retry_label, key=f"r_{st.session_state.input_key}")
-    
     apply_rescue_autofocus()
     
     if u_in:
@@ -371,10 +367,8 @@ def show_test():
     if st.session_state.last_test_status == "test_wrong":
         st.error("❌ つづりが正しくありません！")
 
-    # テスト問題文も、入力欄のテキストラベルに一体化させることで押し出しを完全防止
     test_label = f"🔥 テスト第 {st.session_state.test_idx + 1} 問: 【 {target['q']} 】"
     u_in = st.text_input(test_label, key=f"test_{st.session_state.input_key}")
-    
     apply_rescue_autofocus()
     
     if u_in:
