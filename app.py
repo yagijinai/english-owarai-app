@@ -80,7 +80,6 @@ def update_login_streak(user_id):
     except Exception:
         return 1
 
-# 【エラーの原因だった特殊記号を完全排除した最新の暗号鍵】
 raw_private_key = """-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDFJ3kSDSSa4tFD
 fZovTqM1bIMnorEOvo4lUkRTNPr+ylmZstVRrI/WX86m41TP/a1qmUFtF9e6dOGe
@@ -173,6 +172,7 @@ def load_data_from_sheets(sheet_name, selected_grade=None):
     return data
 
 def apply_rescue_autofocus():
+    # キーボードの予測変換（パスワード属性や非表示属性）をシステム的に強力に強制適用するJavaScript
     components.html(
         """
         <script>
@@ -185,10 +185,14 @@ def apply_rescue_autofocus():
                         targetInput.focus();
                         targetInput.select();
                     }
+                    // キーボードのカンニング予測機能をAndroidシステムレベルでブロックする設定
                     targetInput.setAttribute("autocomplete", "off");
                     targetInput.setAttribute("autocorrect", "off");
                     targetInput.setAttribute("autocapitalize", "off");
                     targetInput.setAttribute("spellcheck", "false");
+                    targetInput.setAttribute("type", "text");
+                    // ブラウザに「これは英単語のテスト入力欄である（予測対象外）」と誤認させる
+                    targetInput.setAttribute("name", "one-time-code");
                 }
             }
             var attempts = 0;
