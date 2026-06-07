@@ -10,7 +10,7 @@ from google.oauth2.service_account import Credentials
 st.set_page_config(layout="centered", page_title="英単語マスター", page_icon="📝")
 
 # ==========================================
-# 【Part 1: バックエンド処理と認証データの完全埋め込み】
+# 【Part 1: バックエンド処理・データ連携と初期化】
 # ==========================================
 
 def init_firebase():
@@ -80,40 +80,40 @@ def update_login_streak(user_id):
     except Exception:
         return 1
 
-# 【エラー原因の記号を完全排除した、実際の見た目通りの鍵データ】
+# 【エラーの原因だった特殊記号を完全排除した最新の暗号鍵】
 raw_private_key = """-----BEGIN PRIVATE KEY-----
-MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDHsATzN/eB+vni
-IYKmHN1s+Sv987FoZVb/lQIi0MuPu9JM8PoAaze9ihf+MWh+YoMqgENQbkdQJRZ4
-TG2Oi4XQAAtURHv8wX5RUoRJg853I88MdIpMSBtPt1aIkMbKUGJ3VcKaLI9Yq4vU
-VZLJrP1kAjHULS7dSnBwfavguN+1U/N/g5NpP+SUat96xsAjprxs+Lhtn6L/vHRg
-f66nn6ysNsIxSmn5XuhhOCbhIQkh5SRRZbLZ6mFrG7XpB5aB0g8iWbRBG7+f8u62
-kamISPgiLqyEShEG74zcC2L0VbBvU4w3BayXORfM1KTGMjTurNb0vSh5o7Qj5Ty/
-p0LcV8RRAgMBAAECggEAFb78ewQwRw5u4gpmMPLZxkFIYiqEumq207SFfAci8+8v
-UsO3Zg5HDrQYMs1spL7Tq/A15G9uArNXRBiGocxd8S3gDfg7TGZB/FcxItRgyqay
-qJeUbAQ6PS8pFEw36dZhMr+7JpENt0lPO/tptd7J5Xc7t/CHtv+hSQ7Whe18J0Hg
-1tcPvSmc0lg/ow1q9CpyrV8nUyqeyh6t03VkAPU5FA1/SYNu4zk3KMhKr3rPG/Tb
-rIpn07bU/5QYeebMYy4NPxh6g7NpjbQQR3fIhaQ/BrSTt+n774dM3GhZxBtUmXgH
-veuU/bAseEre1j4HfBU/F9F69L8lWn0SLJnfnS/ptQKBgQDyzdNSYSgXGXd3E6zK
-eyXKAMMyqwza87sQDGDUN+GZvNiGoq2oXV7aTtHxcjNFNno5KZ51PfVc76DvsAMb
-ZkESp+71yjhQU5IRktREfNxKDCmsStMk4NVV6tW1uZREGMCxfan49W1P5um0x4Ih
-i6pcK1wB3wWE49sRTqHIriS3GwKBgQDSik60TtCaOXNj+uGk94ukRQu1q4wTT2xS
-EO3pKpP/crOEljoHfsx/ND5pqtlMcm5pQggmrzIBfY6AIk1knktrj3tv8JiQ8JEA
-TvXRUbN2WMA5WMoJixoqLuXA3pqD8owRSIBdCJeDcUtHMHq2Oth4YY2Hg9ZRDWB7
-zP0l2WvNAwKBgAohCAXRw8hi6ZbwHS89P/BTY9FDTX/81vruaUOxKRouxKGpO7Fg
-Y8qbqyp1ZyomAadM0y107j14SbB2GUsVUvWiR9e9HehL9DYDeBN7Wf1E0KA9Zt2M
-+5lf+JZiLYtBtRgyc9rM8kh5C5rdD9KybuL1dBsn4KUQlFz+eMVUbnetAoGAcPZq
-Ug3zmLv4cI1cYiG7l9C//qJjTr0PdlzE+ZSxwZ5uOVZNHlZnLF0Am7tiScUf/nPC
-YdcgMnKGcbN16OWRu81JQn9JrIKWmh7Df6Khcn8d6+b6x/INgNKWzUvihacuhdtr
-m/8PJCQ2aqTVQk8CdFyLDkmrROOzf9k1fghQ8bcCgYA1iTHU0kS4C//XPldmuQLT
-nb+zpEsTH337WCVp4GpI8OoSKJPYvsykrZ0+Rlsy8lkRnP35ZwyEO9OT2YFobwnGN
-nc68FEPh601luBYq+klua+7ifgopZDZMpJPWHNWW7TMK+L78w64r2Q+YbFGRCojb
-QUJCIlRWsCx9h1hcPDSJJQ==
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDFJ3kSDSSa4tFD
+fZovTqM1bIMnorEOvo4lUkRTNPr+ylmZstVRrI/WX86m41TP/a1qmUFtF9e6dOGe
+In7kFHEg8qZ9SaXd8PSmBxiEDOuFYd7P8f5bw9JvjT3/w+n0nEH7EDFOsEtAWK5t
+ZERsTYsABqVoDmpLzSBia9pgMmjbJei122t15mUAJnImv7cQHKLf81/cM3OlQ0LJ
+Fbjx99Kl/3577LlDFK0LoakNYxh7FP0fPPKFMT+GGJNtzQTCgtUh36n0SooW0ByP
+URxbvNj8CO6J6WzPI/l5NAKBjkOmV069ukXdwdH1Nre70zWh6eviEVFPsOj3dad+
+9m89QdO1AgMBAAECggEAB/mXySYk8+r24g8DnKRGr9OK3qCTHvCQWWwhfWgoOwQ+
+aZw1Ss97JgXMGy4Y8SzmxegbIGmVfWJa+gWVMm6tQNLv7yN6hSbJDqo80KKhKE0U
+MT8ttdKPAZoqBt2K6i0j8h7uj6tL7/dmXuBucB8W31JlgHcMz7IlfDW2qKuBWFP3
+DutjVm3T8gTiQKC2kADspztDTX+fWTtJ8hzVnYbbqj+va6y3Hx1oMMWUzMz1wBSC
+xgdkzNfyPub9ZizkOJz9Cvn5oDwIy99sZ7crooElopLFLPdfRuWRj5rcuEwXJrxo
+WHx+vQvouK9B8o1f8BlQFcIY53WnwHiZloo3w1weZQKBgQDlfANXZBPY069YXp8B
+ro4ikNL/1ZmF6qt8Rk3Cqf2pwWiwrWSYJtDIny/GSODCSn63EQxC5t4Z4JuLFHmj
+jtf/uY7C9p85Ds3bEVkboavU2+YS4Quu88UgN6GrOAebg41AkxZmF+mHTvvb1rHm
+/Ohk0BTKUZXqhmAwQZTDxjQgCwKBgQDb7yeHSsf8TZq1NKw63U8W8GbqCyWtI7Fx
++cX13CmORz8/0WpoAdntrUN6cCHoxm8tkl/sh480DLI2TIz9+nquAusoou3Aepzu
+C2Ji3uEzqeYLfGRt+EJRLQ76X8E61qPnQpqtstrr3AUbQvZiTG30eWR3ZDg7v/IF
+FWvgbLtzPwKBgH0yPPhuZs2CH0VMyd63BmAhNpvQQmNm9YtlJ4MuDm+QTrckwZ6o
+fnsVLZE1rTkSPzNMn63YGg9wFCu6TepHQdwHtbTzq0YLp47+VejXONF17n0aPa+C
+2maLMy4f8TaMfIFgPXYRUZw6IPl8la35CCgHxW/jNrCuAsgQ30I3XbSlAoGAMpHZ
+1+zk8OlzIik7VMmgLtkWAMiRYC8t1NQmpXJ7B6DwNR9UxRdv4YuOUW/JDDncRHE8
+pylATyqAK6YMYTWf0bUQFybnXfOTc9SgSbWPuI5fO9LdUL/dl8axg/ZSetHxm/If
+mMLgPY04i10pQ87pFWZ4KE+d8ncfEfYr+M1niIcCgYEAgrqQPsCFA6Lgd+iH3sh6
+Kc0YB3u+HNQc5wT63sIf0uQBAgiWMJwcxpO4N4v0g3xxkYoyomGl5KCs2Q7QrkNr
+8x1jSJvUmli5Ph08dk/75atSSR4JgpLmpWCNegcnZlToMiOQXPHRVEmTCFPiuWPd
+bk+TobPaSKZGAht68O3l2a0=
 -----END PRIVATE KEY-----"""
 
 GOOGLE_KEY_DATA = {
     "type": "service_account",
     "project_id": "english-practice-app-495906",
-    "private_key_id": "657003817d6f090b778cbdf3c3b33c1cbb981977",
+    "private_key_id": "aa03547283941b2d70424bc519ab338d8b50864d",
     "private_key": raw_private_key,
     "client_email": "english-practice-app@english-practice-app-495906.iam.gserviceaccount.com",
     "client_id": "100283173482304409523",
@@ -124,7 +124,7 @@ GOOGLE_KEY_DATA = {
     "universe_domain": "googleapis.com"
 }
 # ==========================================
-# 【Part 2: スプレッドシート読み込み処理とメニュー画面】
+# 【Part 2: メニュー画面と救済機能付き練習画面】
 # ==========================================
 
 def load_data_from_sheets(sheet_name, selected_grade=None):
@@ -250,7 +250,7 @@ def show_menu():
         else:
             st.error(f"スプレッドシートの『WordList』から {st.session_state.grade} の単語データを取得できませんでした。")
 # ==========================================
-# 【Part 3: 練習・復習・テスト画面とメインルーター】
+# 【Part 3: 復習画面・テスト画面とメインルーター】
 # ==========================================
 
 def show_train():
