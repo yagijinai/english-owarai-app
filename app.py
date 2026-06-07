@@ -87,16 +87,23 @@ def load_data_from_sheets(sheet_name, selected_grade=None):
     data = []
     try:
         scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-        if os.path.exists('secret_key.json'):
-            # 【修正点】scopesをキーワード引数（scopes=scopes）として正しく渡すよう修正
-            creds = Credentials.from_service_account_file('secret_key.json', scopes=scopes)
-        elif "GCP_SERVICE_ACCOUNT" in st.secrets:
-            key_dict = json.loads(st.secrets["GCP_SERVICE_ACCOUNT"])
-            creds = Credentials.from_service_account_info(key_dict, scopes=scopes)
-        else:
-            st.error("認証キー（secret_key.json または st.secrets）が見つかりません。")
-            return data
-
+        
+        # 【チェック3：認証キーをコードに直接埋め込み】
+        # ご自身の secret_key.json の中身の文字に書き換えてください
+        key_dict = {
+            "type": "service_account",
+            "project_id": "あなたのプロジェクトID",
+            "private_key_id": "あなたのプライベートキーID",
+            "private_key": "-----BEGIN PRIVATE KEY-----\nあなたの鍵のデータ\n-----END PRIVATE KEY-----\n",
+            "client_email": "あなたのサービスアカウントのメールアドレス",
+            "client_id": "あなたのクライアントID",
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_x509_cert_url": "あなたのクライアントx509証明書URL"
+        }
+        
+        creds = Credentials.from_service_account_info(key_dict, scopes=scopes)
         client = gspread.authorize(creds)
         spreadsheet = client.open("英単語学習アプリ")
         worksheet = spreadsheet.worksheet(sheet_name)
@@ -136,11 +143,8 @@ def load_data_from_sheets(sheet_name, selected_grade=None):
                             "a": word_val.lower().strip()
                         })
             return data
-    except Exception as e:
-        st.error(f"スプレッドシート通信エラー: {str(e)}")
-    return data
 
-# ==========================================
+    # ==========================================
 # 【Part 2: メニュー画面と救済機能付き練習画面】
 # ==========================================
 
@@ -262,7 +266,6 @@ def show_train():
     elif st.session_state.last_train_status == "wrong":
         st.error("❌ つづりが正しくありません！ もう一度入力してみよう。")
 
-    # 【修正点】Streamlitでサポートされていない引数 'autocomplete' を完全除去
     u_in = st.text_input("英語を入力（入力してEnterで判定）:", key=f"t_{st.session_state.input_key}")
     
     apply_rescue_autofocus()
@@ -281,7 +284,8 @@ def show_train():
             st.session_state.input_key += 1 
         st.rerun()
 
-# ==========================================
+
+    # ==========================================
 # 【Part 3: 復習画面・テスト画面とメインルーター】
 # ==========================================
 
@@ -371,3 +375,6 @@ elif st.session_state.page == 'retry':
     show_retry()
 elif st.session_state.page == 'test':
     show_test()
+    except Exception as e:
+        st.error(f"スプレッドシート通信エラー: {str(e)}")
+    return data
