@@ -10,7 +10,7 @@ from google.oauth2.service_account import Credentials
 st.set_page_config(layout="centered", page_title="英単語マスター", page_icon="📝")
 
 # ==========================================
-# 【Part 1: バックエンド処理・データ連携と初期化】
+# 【新しい Part 1: バックエンド処理と認証データ設定】
 # ==========================================
 
 def init_firebase():
@@ -59,15 +59,12 @@ def update_login_streak(user_id):
     try:
         today_str = datetime.now().strftime('%Y-%m-%d')
         yesterday_str = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-        
         user_ref = db.collection('users').document(user_id)
         doc = user_ref.get()
-        
         if doc.exists:
             user_data = doc.to_dict()
             last_login = user_data.get('last_login_date', '')
             current_streak = user_data.get('streak_count', 1)
-            
             if last_login == today_str:
                 return current_streak
             elif last_login == yesterday_str:
@@ -83,27 +80,29 @@ def update_login_streak(user_id):
     except Exception:
         return 1
 
+# 【チェック3の認証キー設定用データ】
+# ご自身の secret_key.json の内容に書き換えてください
+GOOGLE_KEY_DATA = {
+    "type": "service_account",
+    "project_id": "あなたのプロジェクトID",
+    "private_key_id": "あなたのプライベートキーID",
+    "private_key": "-----BEGIN PRIVATE KEY-----\nあなたの鍵のデータ\n-----END PRIVATE KEY-----\n",
+    "client_email": "あなたのサービスアカウントのメールアドレス",
+    "client_id": "あなたのクライアントID",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    "client_x509_cert_url": "あなたのクライアントx509証明書URL"
+}
+# ==========================================
+# 【新しい Part 2: スプレッドシート読み込み処理とメニュー画面】
+# ==========================================
+
 def load_data_from_sheets(sheet_name, selected_grade=None):
     data = []
     try:
         scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-        
-        # 【チェック3：認証キーをコードに直接埋め込み】
-        # ご自身の secret_key.json の中身の文字に書き換えてください
-        key_dict = {
-            "type": "service_account",
-            "project_id": "あなたのプロジェクトID",
-            "private_key_id": "あなたのプライベートキーID",
-            "private_key": "-----BEGIN PRIVATE KEY-----\nあなたの鍵のデータ\n-----END PRIVATE KEY-----\n",
-            "client_email": "あなたのサービスアカウントのメールアドレス",
-            "client_id": "あなたのクライアントID",
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "client_x509_cert_url": "あなたのクライアントx509証明書URL"
-        }
-        
-        creds = Credentials.from_service_account_info(key_dict, scopes=scopes)
+        creds = Credentials.from_service_account_info(GOOGLE_KEY_DATA, scopes=scopes)
         client = gspread.authorize(creds)
         spreadsheet = client.open("英単語学習アプリ")
         worksheet = spreadsheet.worksheet(sheet_name)
@@ -111,7 +110,6 @@ def load_data_from_sheets(sheet_name, selected_grade=None):
         
         if not all_records or len(all_records) <= 1:
             return data
-            
         rows = all_records[1:]
 
         if sheet_name == "RewardList":
@@ -129,13 +127,11 @@ def load_data_from_sheets(sheet_name, selected_grade=None):
                 grade_str = "2"
             elif selected_grade == "中3":
                 grade_str = "3"
-
             for row in rows:
                 if len(row) >= 5:
                     word_val = row[1].strip()
                     meaning_val = row[2].strip()
                     grade_val = row[4].strip()
-
                     if grade_val == grade_str and word_val and meaning_val:
                         data.append({
                             "grade": selected_grade,
@@ -143,10 +139,9 @@ def load_data_from_sheets(sheet_name, selected_grade=None):
                             "a": word_val.lower().strip()
                         })
             return data
-
-    # ==========================================
-# 【Part 2: メニュー画面と救済機能付き練習画面】
-# ==========================================
+    except Exception as e:
+        st.error(f"スプレッドシート通信エラー: {str(e)}")
+    return data
 
 def apply_rescue_autofocus():
     components.html(
@@ -167,23 +162,18 @@ def apply_rescue_autofocus():
                     targetInput.setAttribute("spellcheck", "false");
                 }
             }
-
             var attempts = 0;
             var focusTimer = setInterval(function() {
                 grabFocus();
                 attempts++;
-                if (attempts >= 30) {
-                    clearInterval(focusTimer);
-                }
+                if (attempts >= 30) { clearInterval(focusTimer); }
             }, 40);
-
             window.parent.document.removeEventListener('keydown', window.handleRescueKey);
             window.handleRescueKey = function(e) {
                 var activeEl = window.parent.document.activeElement;
                 if (activeEl.tagName !== 'INPUT') {
                     if (e.key === ' ' || e.key === 'Spacebar' || e.key === 'Enter') {
-                        e.preventDefault();
-                        grabFocus();
+                        e.preventDefault(); grabFocus();
                     }
                 }
             };
@@ -197,7 +187,6 @@ def apply_rescue_autofocus():
 def show_start():
     st.title("English Master")
     st.subheader("アプリの開始方法を選んでください")
-    
     col1, col2 = st.columns(2)
     with col1:
         if st.button("同じIDでつづける", use_container_width=True):
@@ -218,7 +207,6 @@ def show_menu():
     st.title("メインメニュー")
     st.markdown(f"### 🔥 連続学習 **{st.session_state.streak_count}** 日目！ すごいです！毎日続けよう！")
     st.write("---")
-    
     st.session_state.grade = st.selectbox("学年を選択", ["中1", "中2", "中3"], index=1)
     if st.button("🚀 練習開始", use_container_width=True):
         words = load_data_from_sheets('WordList', st.session_state.grade)
@@ -232,10 +220,12 @@ def show_menu():
             st.rerun()
         else:
             st.error(f"スプレッドシートの『WordList』から {st.session_state.grade} の単語データを取得できませんでした。")
+# ==========================================
+# 【新しい Part 3: 練習・復習・テスト画面とメインルーター】
+# ==========================================
 
 def show_train():
     pending = [w for w in st.session_state.session_words if st.session_state.training_counts.get(w['a'], 0) < 3]
-    
     if not pending:
         st.session_state.test_queue = list(st.session_state.session_words)
         st.session_state.test_idx = 0
@@ -252,7 +242,6 @@ def show_train():
 
     target = st.session_state.current_train_word
     current_count = st.session_state.training_counts[target['a']]
-    
     st.subheader(f"練習: {target['q']} (現在の正解数: {current_count}/3)")
     
     if st.button("❓ ヒント"):
@@ -267,7 +256,6 @@ def show_train():
         st.error("❌ つづりが正しくありません！ もう一度入力してみよう。")
 
     u_in = st.text_input("英語を入力（入力してEnterで判定）:", key=f"t_{st.session_state.input_key}")
-    
     apply_rescue_autofocus()
     
     if u_in:
@@ -283,11 +271,6 @@ def show_train():
             st.session_state.show_correct_msg = False
             st.session_state.input_key += 1 
         st.rerun()
-
-
-    # ==========================================
-# 【Part 3: 復習画面・テスト画面とメインルーター】
-# ==========================================
 
 def show_retry():
     target = st.session_state.wrong_target
@@ -306,7 +289,6 @@ def show_retry():
         st.warning(f"❌ つづりが正しくありません。お手本のつづり【{target['a']}】をよく見て入力しよう！")
 
     u_in = st.text_input("お手本通りに入力（Enterで判定）:", key=f"r_{st.session_state.input_key}")
-    
     apply_rescue_autofocus()
     
     if u_in:
@@ -329,13 +311,11 @@ def show_test():
     if st.session_state.test_idx >= len(st.session_state.test_queue):
         st.balloons()
         st.success("テストクリア！")
-        
         neta_list = load_data_from_sheets('RewardList')
         if neta_list:
             neta = random.choice(neta_list)
             st.subheader(f"🎁 ご褒美: {neta['title']}")
             st.info(neta['story'])
-            
         if st.button("メニューへ戻る", use_container_width=True):
             st.session_state.page = 'menu'
             st.rerun()
@@ -348,7 +328,6 @@ def show_test():
         st.error("❌ つづりが正しくありません！")
 
     u_in = st.text_input("回答を入力（Enterで確定）:", key=f"test_{st.session_state.input_key}")
-    
     apply_rescue_autofocus()
     
     if u_in:
@@ -375,6 +354,3 @@ elif st.session_state.page == 'retry':
     show_retry()
 elif st.session_state.page == 'test':
     show_test()
-    except Exception as e:
-        st.error(f"スプレッドシート通信エラー: {str(e)}")
-    return data
