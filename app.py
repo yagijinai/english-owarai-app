@@ -1,9 +1,9 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import random, json, gspread
+from datetime import datetime, timedelta
 from google.oauth2.service_account import Credentials
 
-# --- 1. 設定・認証 ---
 st.set_page_config(layout="centered", page_title="英単語マスター", page_icon="📝")
 st.markdown("<style>.block-container { padding-top: 4.0rem !important; } .stButton > button { width: 100%; }</style>", unsafe_allow_html=True)
 
@@ -36,11 +36,11 @@ Kc0YB3u+HNQc5wT63sIf0uQBAgiWMJwcxpO4N4v0g3xxkYoyomGl5KCs2Q7QrkNr
 bk+TobPaSKZGAht68O3l2a0=
 -----END PRIVATE KEY-----"""
 
-# --- 2. 状態管理 ---
+# 状態管理（初期化）
 if 'page' not in st.session_state:
-    st.session_state.update({'page': 'start', 'logged_in': False, 'grade': '中2', 'session_words': [], 
-                             'training_counts': {}, 'current_train_word': None, 'input_key': 0, 'hint_shown': False})
-
+    st.session_state.update({'page': 'start', 'logged_in': False, 'grade': '中2', 'streak_count': 1, 
+                             'session_words': [], 'training_counts': {}, 'current_train_word': None, 
+                             'input_key': 0, 'hint_shown': False})
 def load_data(sheet_name, grade):
     try:
         creds = Credentials.from_service_account_info(json.loads(json.dumps({"type": "service_account", "project_id": "english-practice-app-495906", "private_key": raw_private_key, "client_email": "english-practice-app@english-practice-app-495906.iam.gserviceaccount.com"})), scopes=['https://www.googleapis.com/auth/spreadsheets'])
@@ -48,8 +48,6 @@ def load_data(sheet_name, grade):
         g_map = {"中1": "1", "中2": "2", "中3": "3"}
         return [{"q": r[2], "a": r[1].lower().strip()} for r in rows[1:] if len(r) >= 5 and r[4] == g_map.get(grade, "2")]
     except: return []
-
-# --- 3. 画面定義 ---
 def show_start():
     st.title("English Master")
     if st.button("同じIDでつづける"): st.session_state.update({'logged_in': True, 'page': 'menu'}); st.rerun()
@@ -57,35 +55,38 @@ def show_start():
 
 def show_menu():
     st.subheader("メインメニュー")
+    st.info(f"🔥 連続学習: {st.session_state.streak_count} 日目")
     st.session_state.grade = st.selectbox("学年選択", ["中1", "中2", "中3"], index=1)
+    
     if st.button("🚀 練習開始"):
         words = load_data('WordList', st.session_state.grade)
         if words:
             st.session_state.session_words = random.sample(words, min(3, len(words)))
             st.session_state.training_counts = {w['a']: 0 for w in st.session_state.session_words}
             st.session_state.page = 'train'
-            st.rerun()
-
+            st.rerun() # ここで確実に再読み込みして遷移する
 def show_train():
     if st.button("❓ ヒント"): st.session_state.hint_shown = True
     if st.session_state.hint_shown and st.session_state.current_train_word:
         st.info(f"💡 正解: {st.session_state.current_train_word['a']}")
 
     pending = [w for w in st.session_state.session_words if st.session_state.training_counts.get(w['a'], 0) < 3]
-    if not pending: st.write("テストへ移行します（テスト機能は以前のコードを連結してください）"); return
+    if not pending: st.write("テスト機能へ移行"); return # ここに以前のテスト機能を連結してください
 
     if st.session_state.current_train_word is None: st.session_state.current_train_word = random.choice(pending)
     
-    st.subheader(f"単語: {st.session_state.current_train_word['q']}")
-    u_in = st.text_input("入力:", key=f"t_{st.session_state.input_key}")
+    st.subheader(f"📖 単語: {st.session_state.current_train_word['q']}")
+    u_in = st.text_input("英語を入力:", key=f"t_{st.session_state.input_key}")
+    
     if u_in:
         if u_in.lower().strip() == st.session_state.current_train_word['a']:
             st.session_state.training_counts[st.session_state.current_train_word['a']] += 1
             st.session_state.current_train_word = None
             st.session_state.hint_shown = False
-        st.session_state.input_key += 1; st.rerun()
+            st.session_state.input_key += 1
+            st.rerun()
 
-# --- 4. ルーター ---
+# --- ルーター ---
 if not st.session_state.logged_in: show_start()
 elif st.session_state.page == 'menu': show_menu()
 elif st.session_state.page == 'train': show_train()
