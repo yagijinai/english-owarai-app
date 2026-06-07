@@ -97,7 +97,17 @@ def load_data_from_sheets(sheet_name, selected_grade=None):
     data = []
     try:
         scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-        creds = Credentials.from_service_account_info(GOOGLE_KEY_DATA, scopes=scopes)
+        
+        # 【修正】古いGOOGLE_KEY_DATA変数の参照を廃止し、本番の認証ロジックに完全統一
+        if os.path.exists('secret_key.json'):
+            creds = Credentials.from_service_account_file('secret_key.json', scopes=scopes)
+        elif "GCP_SERVICE_ACCOUNT" in st.secrets:
+            key_dict = json.loads(st.secrets["GCP_SERVICE_ACCOUNT"])
+            creds = Credentials.from_service_account_info(key_dict, scopes=scopes)
+        else:
+            st.error("Googleドライブの認証設定（secret_key.json 等）が見つかりません。")
+            return data
+
         client = gspread.authorize(creds)
         spreadsheet = client.open("英単語学習アプリ")
         worksheet = spreadsheet.worksheet(sheet_name)
@@ -182,7 +192,6 @@ def apply_rescue_autofocus():
     )
 
 def show_start():
-    # 開始画面の最上部にも空行を追加
     st.write("")
     st.title("English Master")
     st.subheader("アプリの開始方法を選んでください")
@@ -203,7 +212,6 @@ def show_start():
             st.rerun()
 
 def show_menu():
-    # メニュー画面の最上部にも空行を追加
     st.write("")
     st.title("メインメニュー")
     st.markdown(f"### 🔥 連続学習 **{st.session_state.streak_count}** 日目！")
@@ -244,10 +252,8 @@ def show_train():
     target = st.session_state.current_train_word
     current_count = st.session_state.training_counts[target['a']]
     
-    # 【修正箇所】最上部に空の1行を作り、全体を2行目に押し下げる
     st.write("")
 
-    # ヒント要求ボタン
     if st.button("❓ ヒントをみる", key="hint_btn", use_container_width=True):
         st.session_state.hint_shown = True
 
@@ -257,7 +263,6 @@ def show_train():
     elif st.session_state.last_train_status == "wrong":
         st.error("❌ もう一度入力してみよう。")
 
-    # ヒントの合流表示ロジック
     if st.session_state.hint_shown:
         input_label = f"【練習】 {target['q']} (正解: {current_count}/3) ⇒ 💡正解：{target['a']}"
     else:
@@ -287,7 +292,6 @@ def show_retry():
         st.rerun()
         return
         
-    # 【修正箇所】最上部に空の1行を作り、全体を2行目に押し下げる
     st.write("")
 
     if st.session_state.last_test_status == "retry_correct_step":
@@ -331,7 +335,6 @@ def show_test():
     
     target = st.session_state.test_queue[st.session_state.test_idx]
     
-    # 【修正箇所】最上部に空の1行を作り、全体を2行目に押し下げる
     st.write("")
 
     if st.session_state.last_test_status == "test_wrong":
@@ -365,47 +368,3 @@ elif st.session_state.page == 'retry':
     show_retry()
 elif st.session_state.page == 'test':
     show_test()
-
-# 認証用データを末尾に配置
-raw_private_key = """-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDFJ3kSDSSa4tFD
-fZovTqM1bIMnorEOvo4lUkRTNPr+ylmZstVRrI/WX86m41TP/a1qmUFtF9e6dOGe
-In7kFHEg8qZ9SaXd8PSmBxiEDOuFYd7P8f5bw9JvjT3/w+n0nEH7EDFOsEtAWK5t
-ZERsTYsABqVoDmpLzSBia9pgMmjbJei122t15mUAJnImv7cQHKLf81/cM3OlQ0LJ
-Fbjx99Kl/3577LlDFK0LoakNYxh7FP0fPPKFMT+GGJNtzQTCgtUh36n0SooW0ByP
-URxbvNj8CO6J6WzPI/l5NAKBjkOmV069ukXdwdH1Nre70zWh6eviEVFPsOj3dad+
-9m89QdO1AgMBAAECggEAB/mXySYk8+r24g8DnKRGr9OK3qCTHvCQWWwhfWgoOwQ+
-aZw1Ss97JgXMGy4Y8SzmxegbIGmVfWJa+gWVMm6tQNLv7yN6hSbJDqo80KKhKE0U
-MT8ttdKPAZoqBt2K6i0j8h7uj6tL7/dmXuBucB8W31JlgHcMz7IlfDW2qKuBWFP3
-DutjVm3T8gTiQKC2kADspztDTX+fWTtJ8hzVnYbbqj+va6y3Hx1oMMWUzMz1wBSC
-xgdkzNfyPub9ZizkOJz9Cvn5oDwIy99sZ7crooElopLFLPdfRuWRj5rcuEwXJrxo
-WHx+vQvouK9B8o1f8BlQFcIY53WnwHiZloo3w1weZQKBgQDlfANXZBPY069YXp8B
-ro4ikNL/1ZmF6qt8Rk3Cqf2pwWiwrWSYJtDIny/GSODCSn63EQxC5t4Z4JuLFHmj
-jtf/uY7C9p85Ds3bEVkboavU2+YS4Quu88UgN6GrOAebg41AkxZmF+mHTvvb1rHm
-/Ohk0BTKUZXqhmAwQZTDxjQgCwKBgQDb7yeHSsf8TZq1NKw63U8W8GbqCyWtI7Fx
-+cX13CmORz8/0WpoAdntrUN6cCHoxm8tkl/sh480DLI2TIz9+nquAusoou3Aepzu
-C2Ji3uEzqeYLfGRt+EJRLQ76X8E61qPnQpqtstrr3AUbQvZiTG30eWR3ZDg7v/IF
-FWvgbLtzPwKBgH0yPPhuZs2CH0VMyd63BmAhNpvQQmNm9YtlJ4MuDm+QTrckwZ6o
-fnsVLZE1rTkSPzNMn63YGg9wFCu6TepHQdwHtbTzq0YLp47+VejXONF17n0aPa+C
-2maLMy4f8TaMfIFgPXYRUZw6IPl8la35CCgHxW/jNrCuAsgQ30I3XbSlAoGAMpHZ
-1+zk8OlzIik7VMmgLtkWAMiRYC8t1NQmpXJ7B6DwNR9UxRdv4YuOUW/JDDncRHE8
-pylATyqAK6YMYTWf0bUQFybnXfOTc9SgSbWPuI5fO9LdUL/dl8axg/ZSetHxm/If
-mMLgPY04i10pQ87pFWZ4KE+d8ncfEfYr+M1niIcCgYEAgrqQPsCFA6Lgd+iH3sh6
-Kc0YB3u+HNQc5wT63sIf0uQBAgiWMJwcxpO4N4v0g3xxkYoyomGl5KCs2Q7QrkNr
-8x1jSJvUmli5Ph08dk/75atSSR4JgpLmpWCNegcnZlToMiOQXPHRVEmTCFPiuWPd
-bk+TobPaSKZGAht68O3l2a0=
------END PRIVATE KEY-----"""
-
-GOOGLE_KEY_DATA = {
-    "type": "service_account",
-    "project_id": "english-practice-app-495906",
-    "private_key_id": "aa03547283941b2d70424bc519ab338d8b50864d",
-    "private_key": raw_private_key,
-    "client_email": "english-practice-app@english-practice-app-495906.iam.gserviceaccount.com",
-    "client_id": "100283173482304409523",
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/english-practice-app%40english-practice-app-495906.iam.gserviceaccount.com",
-    "universe_domain": "googleapis.com"
-}
