@@ -10,7 +10,7 @@ from google.oauth2.service_account import Credentials
 st.set_page_config(layout="centered", page_title="英単語マスター", page_icon="📝")
 
 # ==========================================
-# 【Part 1: バックエンド処理と認証データの合体】
+# 【Part 1: バックエンド処理と認証データの完全修正合体】
 # ==========================================
 
 def init_firebase():
@@ -80,12 +80,43 @@ def update_login_streak(user_id):
     except Exception:
         return 1
 
-# 【完全に埋め込まれた専用の認証キーデータ】
+# 【改行コードのエラーを完全修正した専用認証キー】
+raw_private_key = (
+    "-----BEGIN PRIVATE KEY-----\n"
+    "MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDHsATzN/eB+vni\n"
+    "IYKmHN1s+Sv987FoZVb/lQIi0MuPu9JM8PoAaze9ihf+MWh+YoMqgENQbkdQJRZ4\n"
+    "TG2Oi4XQAAtURHv8wX5RUoRJg853I88MdIpMSBtPt1aIkMbKUGJ3VcKaLI9Yq4vU\n"
+    "VZLJrP1kAjHULS7dSnBwfavguN+1U/N/g5NpP+SUat96xsAjprxs+Lhtn6L/vHRg\n"
+    "f66nn6ysNsIxSmn5XuhhOCbhIQkh5SRRZbLZ6mFrG7XpB5aB0g8iWbRBG7+f8u62\n"
+    "kamISPgiLqyEShEG74zcC2L0VbBvU4w3BayXORfM1KTGMjTurNb0vSh5o7Qj5Ty/\n"
+    "p0LcV8RRAgMBAAECggEAFb78ewQwRw5u4gpmMPLZxkFIYiqEumq207SFfAci8+8v\n"
+    "UsO3Zg5HDrQYMs1spL7Tq/A15G9uArNXRBiGocxd8S3gDfg7TGZB/FcxItRgyqay\n"
+    "qJeUbAQ6PS8pFEw36dZhMr+7JpENt0lPO/tptd7J5Xc7t/CHtv+hSQ7Whe18J0Hg\n"
+    "1tcPvSmc0lg/ow1q9CpyrV8nUyqeyh6t03VkAPU5FA1/SYNu4zk3KMhKr3rPG/Tb\n"
+    "rIpn07bU/5QYeebMYy4NPxh6g7NpjbQQR3fIhaQ/BrSTt+n774dM3GhZxBtUmXgH\n"
+    "veuU/bAseEre1j4HfBU/F9F69L8lWn0SLJnfnS/ptQKBgQDyzdNSYSgXGXd3E6zK\n"
+    "eyXKAMMyqwza87sQDGDUN+GZvNiGoq2oXV7aTtHxcjNFNno5KZ51PfVc76DvsAMb\n"
+    "ZkESp+71yjhQU5IRktREfNxKDCmsStMk4NVV6tW1uZREGMCxfan49W1P5um0x4Ih\n"
+    "i6pcK1wB3wWE49sRTqHIriS3GwKBgQDSik60TtCaOXNj+uGk94ukRQu1q4wTT2xS\n"
+    "EO3pKpP/crOEljoHfsx/ND5pqtlMcm5pQggmrzIBfY6AIk1knktrj3tv8JiQ8JEA\n"
+    "TvXRUbN2WMA5WMoJixoqLuXA3pqD8owRSIBdCJeDcUtHMHq2Oth4YY2Hg9ZRDWB7\n"
+    "zP0l2WvNAwKBgAohCAXRw8hi6ZbwHS89P/BTY9FDTX/81vruaUOxKRouxKGpO7Fg\n"
+    "Y8qbqyp1ZyomAadM0y107j14SbB2GUsVUvWiR9e9HehL9DYDeBN7Wf1E0KA9Zt2M\n"
+    "+5lf+JZiLYtBtRgyc9rM8kh5C5rdD9KybuL1dBsn4KUQlFz+eMVUbnetAoGAcPZq\n"
+    "Ug3zmLv4cI1cYiG7l9C//qJjTr0PdlzE+ZSxwZ5uOVZNHlZnLF0Am7tiScUf/nPC\n"
+    "YdcgMnKGcbN16OWRu81JQn9JrIKWmh7Df6Khcn8d6+b6x/INgNKWzUvihacuhdtr\n"
+    "m/8PJCQ2aqTVQk8CdFyLDkmrROOzf9k1fghQ8bcCgYA1iTHU0kS4C//XPldmuQLT\n"
+    "nb+zpEsTH337WCVp4GpI8OoSKJPYvsykrZ0+Rlsy8lkRnP35ZwyEO9OT2YFobwnGN\n"
+    "nc68FEPh601luBYq+klua+7ifgopZDZMpJPWHNWW7TMK+L78w64r2Q+YbFGRCojb\n"
+    "QUJCIlRWsCx9h1hcPDSJJQ==\n"
+    "-----END PRIVATE KEY-----\n"
+)
+
 GOOGLE_KEY_DATA = {
     "type": "service_account",
     "project_id": "english-practice-app-495906",
     "private_key_id": "657003817d6f090b778cbdf3c3b33c1cbb981977",
-    "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDHsATzN/eB+vni\nIYKmHN1s+Sv987FoZVb/lQIi0MuPu9JM8PoAaze9ihf+MWh+YoMqgENQbkdQJRZ4\nTG2Oi4XQAAtURHv8wX5RUoRJg853I88MdIpMSBtPt1aIkMbKUGJ3VcKaLI9Yq4vU\nVZLJrP1kAjHULS7dSnBwfavguN+1U/N/g5NpP+SUat96xsAjprxs+Lhtn6L/vHRg\nf66nn6ysNsIxSmn5XuhhOCbhIQkh5SRRZbLZ6mFrG7XpB5aB0g8iWbRBG7+f8u62\nkamISPgiLqyEShEG74zcC2L0VbBvU4w3BayXORfM1KTGMjTurNb0vSh5o7Qj5Ty/\np0LcV8RRAgMBAAECggEAFb78ewQwRw5u4gpmMPLZxkFIYiqEumq207SFfAci8+8v\nUsO3Zg5HDrQYMs1spL7Tq/A15G9uArNXRBiGocxd8S3gDfg7TGZB/FcxItRgyqay\nqJeUbAQ6PS8pFEw36dZhMr+7JpENt0lPO/tptd7J5Xc7t/CHtv+hSQ7Whe18J0Hg\n1tcPvSmc0lg/ow1q9CpyrV8nUyqeyh6t03VkAPU5FA1/SYNu4zk3KMhKr3rPG/Tb\nrIpn07bU/5QYeebMYy4NPxh6g7NpjbQQR3fIhaQ/BrSTt+n774dM3GhZxBtUmXgH\nveuU/bAseEre1j4HfBU/F9F69L8lWn0SLJnfnS/ptQKBgQDyzdNSYSgXGXd3E6zK\neyXKAMMyqwza87sQDGDUN+GZvNiGoq2oXV7aTtHxcjNFNno5KZ51PfVc76DvsAMb\nZkESp+71yjhQU5IRktREfNxKDCmsStMk4NVV6tW1uZREGMCxfan49W1P5um0x4Ih\ni6pcK1wB3wWE49sRTqHIriS3GwKBgQDSik60TtCaOXNj+uGk94ukRQu1q4wTT2xS\nEO3pKpP/crOEljoHfsx/ND5pqtlMcm5pQggmrzIBfY6AIk1knktrj3tv8JiQ8JEA\nTvXRUbN2WMA5WMoJixoqLuXA3pqD8owRSIBdCJeDcUtHMHq2Oth4YY2Hg9ZRDWB7\nzP0l2WvNAwKBgAohCAXRw8hi6ZbwHS89P/BTY9FDTX/81vruaUOxKRouxKGpO7Fg\nY8qbqyp1ZyomAadM0y107j14SbB2GUsVUvWiR9e9HehL9DYDeBN7Wf1E0KA9Zt2M\n+5lf+JZiLYtBtRgyc9rM8kh5C5rdD9KybuL1dBsn4KUQlFz+eMVUbnetAoGAcPZq\nUg3zmLv4cI1cYiG7l9C//qJjTr0PdlzE+ZSxwZ5uOVZNHlZnLF0Am7tiScUf/nPC\nYdcgMnKGcbN16OWRu81JQn9JrIKWmh7Df6Khcn8d6+b6x/INgNKWzUvihacuhdtr\nm/8PJCQ2aqTVQk8CdFyLDkmrROOzf9k1fghQ8bcCgYA1iTHU0kS4C//XPldmuQLT\nb+zpEsTH337WCVp4GpI8OoSKJPYvsykrZ0+Rlsy8lkRnP35ZwyEO9OT2YFobwnGN\nnc68FEPh601luBYq+klua+7ifgopZDZMpJPWHNWW7TMK+L78w64r2Q+YbFGRCojb\nQUJCIlRWsCx9h1hcPDSJJQ==\n-----END PRIVATE KEY-----\n",
+    "private_key": raw_private_key,
     "client_email": "english-practice-app@english-practice-app-495906.iam.gserviceaccount.com",
     "client_id": "100283173482304409523",
     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
