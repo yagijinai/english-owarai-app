@@ -9,7 +9,7 @@ from google.oauth2.service_account import Credentials
 
 st.set_page_config(layout="centered", page_title="英単語マスター", page_icon="📝")
 
-# 【修正】st.writeによるバグを排除し、CSSの padding-top を 9.0rem に広げることで「確実に3行空けて4行目から表示」を実現
+# CSS調整
 st.markdown("""
     <style>
         .block-container { padding-top: 9.0rem !important; padding-bottom: 0rem !important; }
@@ -20,7 +20,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 【確定認証データ：最上部配置で未定義エラーを完全防止】
+# 【確定認証データ】
 # ==========================================
 raw_private_key = """-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDFJ3kSDSSa4tFD
@@ -65,21 +65,6 @@ GOOGLE_KEY_DATA = {
     "universe_domain": "googleapis.com"
 }
 
-def init_firebase():
-    try:
-        import firebase_admin
-        from firebase_admin import credentials, firestore
-        if not firebase_admin._apps:
-            if "FIREBASE_SECRET" in st.secrets:
-                key_dict = json.loads(st.secrets["FIREBASE_SECRET"])
-                cred = credentials.Certificate(key_dict)
-                firebase_admin.initialize_app(cred)
-        return firestore.client()
-    except Exception:
-        return None
-
-db = init_firebase()
-
 def init_session():
     if 'page' not in st.session_state:
         st.session_state.update({
@@ -104,36 +89,61 @@ def init_session():
         })
 
 init_session()
-
 def update_login_streak(user_id):
-    if db is None:
-        return 1
     try:
+        scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+        creds = Credentials.from_service_account_info(GOOGLE_KEY_DATA, scopes=scopes)
+        client = gspread.authorize(creds)
+        spreadsheet = client.open("英単語学習アプリ")
+        
+        # UserLogシートを取得（なければエラーを避けるため確認）
+        try:
+            worksheet = spreadsheet.worksheet("UserLog")
+        except gspread.exceptions.WorksheetNotFound:
+            st.error("スプレッドシートに『UserLog』シートが見つかりません。A1:user_id, B1:last_login_date, C1:streak_count のシートを作成してください。")
+            return 1
+
+        all_records = worksheet.get_all_values()
         today_str = datetime.now().strftime('%Y-%m-%d')
         yesterday_str = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-        user_ref = db.collection('users').document(user_id)
-        doc = user_ref.get()
-        if doc.exists:
-            user_data = doc.to_dict()
-            last_login = user_data.get('last_login_date', '')
-            current_streak = user_data.get('streak_count', 1)
+        
+        user_row_idx = -1
+        current_streak = 1
+        last_login = ""
+
+        # 2行目以降から対象のuser_idを探索
+        if len(all_records) > 1:
+            for idx, row in enumerate(all_records[1:], start=2):
+                if len(row) >= 1 and row[0].strip() == user_id:
+                    user_row_idx = idx
+                    last_login = row[1].strip() if len(row) >= 2 else ""
+                    current_streak = int(row[2].strip()) if (len(row) >= 3 and row[2].strip().isdigit()) else 1
+                    break
+
+        if user_row_idx != -1:
+            # 既存ユーザーの判定
             if last_login == today_str:
-                return current_streak
+                # 同一日のログインは維持
+                new_streak = current_streak
             elif last_login == yesterday_str:
+                # 昨日に続くログインは+1
                 new_streak = current_streak + 1
-                user_ref.update({'last_login_date': today_str, 'streak_count': new_streak})
-                return new_streak
             else:
-                user_ref.update({'last_login_date': today_str, 'streak_count': 1})
-                return 1
+                # 一昨日以前の空き、またはバグ値は1日目にリセット
+                new_streak = 1
+            
+            # スプレッドシートの行を更新
+            worksheet.update_cell(user_row_idx, 2, today_str)
+            worksheet.update_cell(user_row_idx, 3, str(new_streak))
         else:
-            user_ref.set({'last_login_date': today_str, 'streak_count': 1})
-            return 1
-    except Exception:
+            # 新規ユーザー登録
+            new_streak = 1
+            worksheet.append_row([user_id, today_str, str(new_streak)])
+            
+        return new_streak
+    except Exception as e:
+        st.error(f"ログイン日数更新エラー: {str(e)}")
         return 1
-# ==========================================
-# 【Part 2: メニュー画面と救済機能付き練習画面】
-# ==========================================
 
 def load_data_from_sheets(sheet_name, selected_grade=None):
     data = []
@@ -222,7 +232,6 @@ def apply_rescue_autofocus():
         """,
         height=0,
     )
-
 def show_start():
     st.title("English Master")
     st.subheader("アプリの開始方法を選んでください")
@@ -259,9 +268,6 @@ def show_menu():
             st.rerun()
         else:
             st.error(f"スプレッドシートの『WordList』から {st.session_state.grade} の単語データを取得できませんでした。")
-# ==========================================
-# 【Part 3: 復習画面・テスト画面とメインルーター】
-# ==========================================
 
 def show_train():
     pending = [w for w in st.session_state.session_words if st.session_state.training_counts.get(w['a'], 0) < 3]
