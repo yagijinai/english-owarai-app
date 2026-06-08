@@ -18,6 +18,7 @@ div.stButton > button { padding: 0.25rem 0.5rem !important; }
 .stTextInput { margin-top: -10px !important; }
 </style>
 """, unsafe_allow_html=True)
+
 def get_gspread_client():
     """Streamlit Secretsから認証情報を取得し、Googleスプレッドシートへ接続する"""
     try:
@@ -34,6 +35,7 @@ def get_gspread_client():
         st.error(f"Google接続認証エラー: {e}")
         st.info("StreamlitのSecretsに 'GOOGLE_SECRET' が正しく設定されているか確認してください。")
         return None
+
 # スプレッドシートのURL（お使いの環境に合わせて書き換えてください）
 SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1C42Lw_Vn_m6A-LptwP6Nf71iR8Y34H_5B6n77u0z3c4/edit"
 
@@ -142,6 +144,7 @@ def update_login_streak(user_id):
     except Exception as e:
         st.error(f"連続学習日数更新エラー: {e}")
         return 1
+
 # 各種状態を保持するセッションの初期化
 if 'page' not in st.session_state:
     st.session_state.page = 'login'
@@ -187,6 +190,7 @@ def apply_rescue_autofocus():
         </script>
         """, height=0, width=0
     )
+
 def show_login():
     st.title("🔑 ログイン画面")
     u_id = st.text_input("GoogleアカウントまたはユーザーIDを入力してください:", key="user_login_input")
@@ -285,6 +289,7 @@ def show_train():
             st.session_state.last_train_status = 'wrong'
         st.session_state.input_key += 1
         st.rerun()
+
 def show_test():
     st.title("🎯 復習テスト画面")
     
