@@ -9,9 +9,10 @@ from google.oauth2.service_account import Credentials
 
 st.set_page_config(layout="centered", page_title="英単語マスター", page_icon="📝")
 
+# 【修正】スマホで画面が上部に隠れて真っ白になるのを防ぐため、9.0remに広げています
 st.markdown("""
 <style>
-    .block-container { padding-top: 4.0rem !important; padding-bottom: 0rem !important; }
+    .block-container { padding-top: 9.0rem !important; padding-bottom: 0rem !important; }
     h3 { font-size: 1.2rem !important; margin-bottom: 0.5rem !important; }
     div.stButton > button { padding: 0.25rem 0.5rem !important; }
     .stTextInput { margin-top: -10px !important; }
